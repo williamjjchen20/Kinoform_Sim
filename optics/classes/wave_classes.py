@@ -51,7 +51,7 @@ class GaussianBeam(Waveform):
         Rz = np.inf if z == 0 else z*(1+(zR/z)**2)
             
         X = args[0]
-        U = np.zeros_like(X)
+        
         if self.simulation.dim == 2:
             Y = args[1]
             U = U0*(w0/wz)*np.exp(-(X**2+Y**2)/wz**2)*np.exp(-1j*(k*z+k*(X**2+Y**2)/(2*Rz)-np.arctan(z/zR)))

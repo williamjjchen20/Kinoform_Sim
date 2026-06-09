@@ -59,7 +59,7 @@ class SimulationObject:
         pass
             
 class Object():
-    def __init__(self, simulation: SimulationObject, z: float, distribution_func):
+    def __init__(self, simulation: SimulationObject, z: float, func):
         # Associate object with provided simulation suite
         self.simulation = simulation
         simulation.add_object(self)
@@ -67,14 +67,14 @@ class Object():
         # intialize physical properties
         self.center = np.zeros(simulation.dim+1)
         self.center[-1] = z
-        self.func = distribution_func
+        self.func = func
         
         if simulation.dim == 1:
             Lx = simulation.Lx
             Nx = simulation.Nx
             X = np.linspace(-Lx/2, Lx/2, Nx)
             self.grid = X
-            self.field = distribution_func(X, z=z)
+            self.field = func(X, z=z)
         elif simulation.dim == 2:
             Lx, Ly = simulation.Lx, simulation.Ly
             Nx, Ny = simulation.Nx, simulation.Ny
@@ -83,12 +83,34 @@ class Object():
             x, y = np.linspace(-Lx/2, Lx/2, int(Nx)), np.linspace(-Ly/2, Ly/2, int(Ny))
             X, Y = np.meshgrid(x, y)
             self.grid = (X, Y)
-            self.field = distribution_func(X, Y, z=z)   
+            self.field = func(X, Y, z=z)   
         else:
             raise Exception
         
-    def view(self):
-        pass
+    def view(self, ax=None, xlim=None, ylim=None, savedir="", cmap="Greys_r", show_label=False):
+        if ax is None:
+            fig, ax = plt.subplots()
+        else:
+            fig = ax.get_figure()
+
+        if self.simulation.dim == 2:
+            Lx, Ly = self.simulation.Lx, self.simulation.Ly
+            im = ax.imshow(
+                self.field,
+                cmap=cmap,
+                extent=[-Lx/2, Lx/2, -Ly/2, Ly/2] #type: ignore
+            )
+            if show_label:
+                fig.colorbar(im, ax=ax, orientation='vertical',
+                            fraction=0.02, pad=0.04, label='Intensity')
+            ax.set(xlabel="x [m]", ylabel="y [m]", xlim=xlim, ylim=ylim)
+        else:
+            ax.plot(self.grid, self.field)
+            ax.set(xlabel="x [m]", xlim=xlim)
+
+        if savedir:
+            plt.savefig(os.path.join(savedir, f"Waveform_{self.center}.png"))
+
         
 class Waveform(Object):
     def __init__(self, energy: float, simulation: SimulationObject, z: float, distribution_func):
@@ -118,24 +140,34 @@ class Waveform(Object):
             plt.figure()
             ax = plt.gca()
         
-
         plt.savefig(os.path.join(savedir, f"Waveform_{self.center}"))
             
         
 class Aperture(Object):
-    def __init__(self, simulation: SimulationObject, z, transmission_func):
-        super().__init__(simulation, z, transmission_func)
+    def __init__(self, simulation: SimulationObject, z, transmittance_func):
+        super().__init__(simulation, z, transmittance_func)
         
     def __repr__(self):
         return f"Thin aperture located at {self.center}"
         
-    def diffract(self, wave: Waveform):
+    def transform(self, wave: Waveform):
         wave.field *= self.field
+        
     
 class Lens(Aperture):
     
-    def __init__(self):
-        pass
+    def __init__(self, simulation: SimulationObject, z, aperture_func, R1, R2, d, transmittance_func=lambda x: x, n=1):
+        
+        func = lambda args, kwargs: aperture_func(*args,**kwargs)*transmittance_func(*args, **kwargs)
+        super().__init__(simulation, z, func)
+        self.d = d
+        self.R1 = R1
+        self.R2 = R2
+        self.f = 1/((n-1)*(1/R1 - 1/R2 + (n-1)*d/(n*R1*R2))) # Lens maker equation
+        
+    def __repr__(self):
+        return f"Lens located at {self.center} with focal length {self.f}"
+    
     
     
     

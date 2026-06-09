@@ -19,7 +19,7 @@ class ApertureFunctions():
         return U 
 
 class SingleSlit(Aperture):
-    def __init__(self, simulation: SimulationObject, z: float, width:float, height=None):
+    def __init__(self, simulation: SimulationObject, z: float, width:float, height:float | None =None):
         self.simulation = simulation
         self.width = width
         if simulation.dim == 2:
@@ -45,7 +45,7 @@ class Circular(Aperture):
     pass
             
 class DoubleSlit(Aperture):
-    def __init__(self, simulation: SimulationObject, z: float, separation:float, width1:float, width2=None, height1=None, height2=None):
+    def __init__(self, simulation: SimulationObject, z: float, separation:float, width1:float, width2:float | None=None, height1=None, height2=None):
         self.simulation = simulation
         self.width1 = width1
         self.width2 = width2 if width2 is not None else width1
