@@ -1,10 +1,16 @@
 import numpy as np
 import scipy.constants as const
+import scipy.special as f
 
 from classes import Aperture, SimulationObject
 
 class DiffractionPatterns():
+    def fraunhofer_condition(self, D, wavelength, L):
+        if L <= D**2/wavelength: raise Exception("Fraunhofer condition violated!")
+        return
+     
     def single_slit_1D(self, x, z=0., wavelength=6.326e-7, width=0.5e-3):
+        self.fraunhofer_condition(width, wavelength, z)
         A = width
         k = 2*const.pi/wavelength
         U0 = np.exp(1j*k*z)*np.exp(1j*k/(2*z)*(x**2))/(1j*wavelength*z)*A if z != 0 else np.inf
@@ -12,11 +18,23 @@ class DiffractionPatterns():
         return U 
         
     def single_slit_2D(self, X, Y, z=0., wavelength=6.326e-7, width=0.5e-3, height=0.5e-3):
+        self.fraunhofer_condition(max(width, height), wavelength, z)
         A = width*height
         k = 2*const.pi/wavelength
         U0 = np.exp(1j*k*z)*np.exp(1j*k/(2*z)*(X**2+Y**2))/(1j*wavelength*z)*A
         U = U0*np.sinc(width*X/(wavelength*z))*np.sinc(height*Y/(wavelength*z))
         return U 
+    
+    def circular(self, X, Y, z=0., wavelength=6.326e-7, radius=0.5e-3):
+        self.fraunhofer_condition(radius, wavelength, z)
+        A = const.pi*radius**2
+        k = 2*const.pi/wavelength
+        r = np.sqrt(X**2+Y**2)
+        arg = k*radius*r/z
+
+        U0 = np.exp(1j*k*z)*np.exp(1j*k*r**2/(2*z))/(1j*wavelength*z)*A
+        U = U0*(2*f.jv(1, arg)/(arg))
+        return U
     
 class ApertureFunctions():
     def circular_mask(self, X, Y, z=0., r=1.0):
