@@ -35,13 +35,18 @@ class WaveFunctions():
 
 
 class GaussianBeam(Waveform):
-    def __init__(self, energy:float, simulation: SimulationObject, z:float):
-        super().__init__(energy, simulation, z, self.wave_function)
+    
+    def __init__(self, energy:float, simulation: SimulationObject, z:float, **kwargs):
+        '''
+        kwargs
+        - U0: Initial peak energy
+        - w0: Beam waist
         
-    def wave_function(self, *args, **kwargs):
-        z = kwargs.get("z", 0.)
-        U0 = kwargs.get("U0", 1.0)
-        w0 = kwargs.get("w0", 0.5e-3)
+        '''
+        super().__init__(energy, simulation, z, **kwargs)
+        
+    def func(self, *args, U0=1.0, w0=1.0):
+        z = args[-1]
         wavelength = self.wavelength
         n = self.simulation.n
         
@@ -61,11 +66,15 @@ class GaussianBeam(Waveform):
         return U
 
 class ConstantBeam(Waveform):
-    def __init__(self, energy:float, simulation: SimulationObject, z:float):
-        super().__init__(energy, simulation, z, self.wave_function)
+    def __init__(self, energy:float, simulation: SimulationObject, z:float, **kwargs):
+        '''
+        kwargs 
+        - U0: Initial peak energy
+        '''
         
-    def wave_function(self, *args, **kwargs):
+        super().__init__(energy, simulation, z, **kwargs)
+       
+    def func(self, *args, U0=1.0):
         X = args[0]
-        U0 = kwargs.get("U0", 1.0)
         U = np.ones_like(X)*U0
         return U
