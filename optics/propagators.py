@@ -71,6 +71,8 @@ def angular_spectrum_method(U: np.ndarray, z: float, simulation: SimulationObjec
     Uz = ifft(A0 * H)
     return Uz
     
+def beam_propagation_method():
+    return
     
 def fresnel_method():
     return

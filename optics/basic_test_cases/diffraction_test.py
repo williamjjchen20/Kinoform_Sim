@@ -97,9 +97,9 @@ def test_slit_aperture_2D(width, height):
 
 def test_circular_aperture(width, height):
     print("Testing Circular Aperture Diffraction...")
-    Lx, Ly, Lz = 2*width, 2*height, 100
+    Lx, Ly, Lz = 3*width, 3*height, 100
     N = 1024
-    slit_radius = 0.5e-3
+    slit_radius = 0.25e-3
 
     simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=N)
     wave = ConstantBeam(energy=1.96, simulation=simulation, z=0)
@@ -136,8 +136,11 @@ def test_circular_aperture(width, height):
 
     I_th[I_th == 0] = 1e-10
     err = np.abs(wave.intensity()-I_th)
-    ax[0, 3].imshow(err/I_th, cmap="Greys_r", extent=[-Lx/2, Lx/2, -Ly/2, Ly/2])
-    ax[0, 3].set(title="Relative Error", xlim=(-width, width), ylim=(-height, height))
+    print("Maximum Error:", np.max(err))
+    idx = np.unravel_index(np.argmax(err), err.shape)
+    print("Maximum Relative Error:", np.max(err)/I_th[idx])
+    ax[0, 3].imshow(err, cmap="Greys_r", extent=[-Lx/2, Lx/2, -Ly/2, Ly/2])
+    ax[0, 3].set(title="Error", xlim=(-width, width), ylim=(-height, height))
     fig.colorbar(im, ax=ax, orientation='vertical', fraction=0.02, pad=0.04, label='Intensity')
     plt.savefig(os.path.join("test_figs/", "Circular_Aperture_Diffraction"))
     
@@ -173,7 +176,7 @@ def test_gaussian(width, height):
 
 if __name__ == "__main__":
     width, height = 0.5e-2, 0.5e-2
-    test_slit_aperture_1D(width)
-    test_slit_aperture_2D(width, height)
+    # test_slit_aperture_1D(width)
+    # test_slit_aperture_2D(width, height)
     test_circular_aperture(width, height)
-    test_gaussian(width, height)
+    # test_gaussian(width, height)

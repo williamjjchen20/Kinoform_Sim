@@ -164,24 +164,32 @@ class Aperture(Object):
     
 class Lens(Aperture):
     
-    def __init__(self, f, aperture_func, simulation: SimulationObject, z:float, **kwargs):
+    def __init__(self, f, aperture_func, simulation: SimulationObject, z:float, t=0., thickness_func=None, **kwargs):
         '''
         args
         - f: focal length [m]
         
         '''
         self.f = f
-        
-        # func = lambda *args, **kwargs: aperture.func(*args, **kwargs)*transmittance_func(*args, **kwargs)
+        if thickness_func is not None: kwargs["func"] = Lens.transmittance(t, thickness_func, **kwargs)
         super().__init__(simulation, z, **kwargs)
         self.field *= aperture_func(*self.grid)
-        # print(self.field)
-        
-        # self.d = d
-        # self.R1 = R1
-        # self.R2 = R2
-        # self.f = 1/((n-1)*(1/R1 - 1/R2 + (n-1)*d/(n*R1*R2))) # Lens maker equation
-        
+    
+    @staticmethod
+    def transmittance(t, thickness_func, **kwargs):
+        '''
+        args
+        - t: thickness of lens on axis
+        - thickness_func: thickness function z(x, y)
+
+        returns
+        - func: distribution function used for object initialization
+        '''
+        k = 2*const.pi/kwargs["wavelength"]
+        n = kwargs["n"]
+        func = lambda *args: np.exp(1j*k*t)*np.exp(1j*k*(n-1.)*thickness_func(*args))
+        return func
+    
     def __repr__(self):
         return f"Lens located at {self.center} with focal length {self.f}"
     

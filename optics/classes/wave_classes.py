@@ -4,32 +4,35 @@ import scipy.constants as const
 from classes import Waveform, SimulationObject
 
 class WaveFunctions():
-    
-    def gaussian_beam_1D(self, x, z=0., wavelength=6.326e-7, w0=0.5e-3, U0=1.0, n=1.0):
+    @staticmethod
+    def gaussian_beam_1D(x, z=0., wavelength=6.326e-7, w0=0.5e-3, U0=1.0, n=1.0):
         
         zR = const.pi*w0**2*n/wavelength
         wz = w0*np.sqrt(1+(z/zR)**2)
         k = 2*const.pi/wavelength
         Rz = np.inf if z == 0 else z*(1+(zR/z)**2)
         U = U0*np.sqrt(w0/wz)*np.exp(-x**2/wz**2)*np.exp(-1j*(k*z+k*x**2/(2*Rz)-np.arctan(z/zR)))
-
         return U
-
-    def gaussian_beam_2D(self, X, Y, z=0., wavelength=6.326e-7, w0=0.5e-3, U0=1.0, n=1.0):
+    
+    @staticmethod
+    def gaussian_beam_2D(X, Y, z=0., wavelength=6.326e-7, w0=0.5e-3, U0=1.0, n=1.0):
         
         zR = const.pi*w0**2*n/wavelength
         wz = w0*np.sqrt(1+(z/zR)**2)
         k = 2*const.pi/wavelength
         Rz = np.inf if z == 0 else z*(1+(zR/z)**2)
         U = U0*(w0/wz)*np.exp(-(X**2+Y**2)/wz**2)*np.exp(-1j*(k*z+k*(X**2+Y**2)/(2*Rz)-np.arctan(z/zR)))
-        
         return U
-
-    def const_wave_1D(self, X, z=0., wavelength=656.e-9, U0=1.0, n=1.0):
+    
+    @staticmethod
+    def const_wave_1D(X, z=0., wavelength=656.e-9, U0=1.0, n=1.0):
+        
         U = np.ones_like(X)*U0
         return U
-
-    def const_wave_2D(self, X, Y, z=0., wavelength=656.e-9, U0=1.0, n=1.0):
+    
+    @staticmethod
+    def const_wave_2D(X, Y, z=0., wavelength=656.e-9, U0=1.0, n=1.0):
+        
         U = np.ones_like(X)*U0
         return U
 
