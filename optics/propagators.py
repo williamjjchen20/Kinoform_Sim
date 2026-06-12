@@ -71,7 +71,13 @@ def angular_spectrum_method(U: np.ndarray, z: float, simulation: SimulationObjec
     Uz = ifft(A0 * H)
     return Uz
     
-def beam_propagation_method():
+def beam_propagation_method(U: np.ndarray, z: float, simulation: SimulationObject, wavelength: float, n=1, dim=1):
+    '''
+    This function implements the BPM.
+    It is better suited for propagation through thick lenses that cannot be approximated as a phase screen.
+    '''
+    
+    
     return
     
 def fresnel_method():

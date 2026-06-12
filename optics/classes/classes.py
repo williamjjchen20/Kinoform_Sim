@@ -59,39 +59,40 @@ class SimulationObject:
         pass
             
 class Object():
-    def __init__(self, simulation: SimulationObject, z: float, **kwargs):
+    def __init__(self, simulation: SimulationObject, z: float, init_field=False, func=None, **kwargs):
         # Associate object with provided simulation suite
         self.simulation = simulation
+        self.dim = simulation.dim
         simulation.add_object(self)
         # intialize physical properties
         self.center = np.zeros(simulation.dim+1)
         self.center[-1] = z
         
-        func = kwargs.get("func", None)
-        if func is not None:
-            self.func = func
+        if func is not None: self.func = func
             
-        # print("Dimensions:", simulation.dim)
-        if simulation.dim == 1:
-            Lx = simulation.Lx
-            Nx = simulation.Nx
-            X = np.linspace(-Lx/2, Lx/2, Nx)
-            self.grid = X
-            self.field = self.func(X, z, **kwargs)
-        elif simulation.dim == 2:
-            Lx, Ly = simulation.Lx, simulation.Ly
-            Nx, Ny = simulation.Nx, simulation.Ny
-            
-            assert Ly is not None and Ny is not None
-            x, y = np.linspace(-Lx/2, Lx/2, int(Nx)), np.linspace(-Ly/2, Ly/2, int(Ny))
-            X, Y = np.meshgrid(x, y)
-            self.grid = (X, Y)
-            self.field = self.func(X, Y, z, **kwargs)   
-        else:
-            raise Exception
+        self._build_grid()
+        self.kwargs = kwargs
+        self.field = None
+        if init_field: self._build_field(**kwargs)
         
+    def _build_grid(self):
+        sim = self.simulation
+        if sim.dim == 1:
+            self.grid = np.linspace(-sim.Lx/2, sim.Lx/2, sim.Nx)
+        else: # dim == 2
+            x = np.linspace(-sim.Lx/2, sim.Lx/2, int(sim.Nx))
+            y = np.linspace(-sim.Ly/2, sim.Ly/2, int(sim.Ny)) #type: ignore
+            self.grid = np.meshgrid(x, y)
+        
+    def _build_field(self, **kwargs):
+        z = self.center[-1]
+        if self.simulation.dim == 1:
+            self.field = self.func(self.grid, z, **kwargs)
+        else:
+            self.field = self.func(*self.grid, z, **kwargs)
+
     def func(self, *args, **kwargs):
-        raise NotImplementedError
+        raise NotImplementedError("Distribution function has not been provided!")
     
     def view(self, ax=None, xlim=None, ylim=None, savedir="", cmap="Greys_r", show_label=False):
         if ax is None:
@@ -99,6 +100,8 @@ class Object():
         else:
             fig = ax.get_figure()
 
+        if self.field is None: raise NotImplementedError
+        
         if isinstance(self, Waveform):
             data = self.intensity()
         elif isinstance(self, Lens):
@@ -129,7 +132,7 @@ class Object():
 
         
 class Waveform(Object):
-    def __init__(self, energy: float, simulation: SimulationObject, z: float, **kwargs):
+    def __init__(self, energy: float, simulation: SimulationObject, z: float, func=None, **kwargs):
         '''
         energy: energy of waveform in eV
         '''
@@ -137,7 +140,7 @@ class Waveform(Object):
         self.wavelength =  (const.h * const.c) * JOULE_TO_EV / energy # [m]
         self.frequency = const.c / self.wavelength # [Hz]
         
-        super().__init__(simulation, z, **kwargs) #functools.partial(distribution_func, wavelength=self.wavelength, n=simulation.n)) # type: ignore
+        super().__init__(simulation, z, init_field=True, func=func, **kwargs) #functools.partial(distribution_func, wavelength=self.wavelength, n=simulation.n)) # type: ignore
         
     def __repr__(self):
         return f"{self.simulation.dim}-D Waveform with energy {self.energy:.3e} eV at {self.center}"
@@ -152,8 +155,8 @@ class Waveform(Object):
         return np.abs(self.field)**2
         
 class Aperture(Object):
-    def __init__(self, simulation: SimulationObject, z, **kwargs):
-        super().__init__(simulation, z, **kwargs)
+    def __init__(self, simulation: SimulationObject, z, func=None, **kwargs):
+        super().__init__(simulation, z, init_field=True, func=func, **kwargs)
         
     def __repr__(self):
         return f"Thin aperture located at {self.center}"
@@ -161,22 +164,36 @@ class Aperture(Object):
     def transform(self, wave: Waveform):
         wave.field *= self.field
         
+
+class Lens(Object):
     
-class Lens(Aperture):
-    
-    def __init__(self, f, aperture_func, simulation: SimulationObject, z:float, t=0., thickness_func=None, **kwargs):
+    def __init__(self, f, aperture_func, simulation: SimulationObject, z:float, thickness_func=None, wavelength=None, **kwargs):
         '''
         args
         - f: focal length [m]
-        
+        - aperture_func: lens aperture function over grid
         '''
         self.f = f
-        if thickness_func is not None: kwargs["func"] = Lens.transmittance(t, thickness_func, **kwargs)
-        super().__init__(simulation, z, **kwargs)
-        self.field *= aperture_func(*self.grid)
+        self.aperture = aperture_func
+        
+        ## implements lens phase screen
+        if thickness_func is not None: 
+            func = Lens.transmittance(thickness_func, **kwargs)
+        else:
+            func = None
+            
+        super().__init__(simulation, z, init_field=False, func=func, **kwargs)
+        if wavelength is not None: self._build_field(wavelength=wavelength, **kwargs)
+            
+    def build(self, wave: Waveform):
+        self._build_field(wavelength=wave.wavelength, **self.kwargs)
+        if self.dim == 1: 
+            self.field *= self.aperture(self.grid)
+        else: 
+            self.field *= self.aperture(*self.grid)
     
     @staticmethod
-    def transmittance(t, thickness_func, **kwargs):
+    def transmittance(thickness_func, **kwargs):
         '''
         args
         - t: thickness of lens on axis
@@ -187,14 +204,21 @@ class Lens(Aperture):
         '''
         k = 2*const.pi/kwargs["wavelength"]
         n = kwargs["n"]
-        func = lambda *args: np.exp(1j*k*t)*np.exp(1j*k*(n-1.)*thickness_func(*args))
+        func = lambda *args: np.exp(1j*k*(n-1.)*thickness_func(*args))
         return func
+    
+    def thickness(self):
+        raise NotImplementedError
     
     def __repr__(self):
         return f"Lens located at {self.center} with focal length {self.f}"
     
+    def transform(self, wave: Waveform):
+        wave.field *= self.field
+        
     def angle(self):
-        return np.angle(self.field)
+        field = np.where(self.field > 0, self.field, 0.)
+        return np.angle(field)
         
     def side_view(self):
         pass

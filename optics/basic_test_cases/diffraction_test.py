@@ -20,7 +20,7 @@ def test_slit_aperture_1D(width):
     aperture = SingleSlit(simulation=simulation, z=1.0, width=slit_width)
 
     plt.figure()
-    plt.plot(wave.grid, aperture.field)
+    plt.plot(aperture.grid, aperture.field) #type: ignore
     plt.savefig(os.path.join("test_figs/", "Slit_Aperture_1D"))
 
     fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(12, 4), squeeze=False, sharey=True)
@@ -176,7 +176,7 @@ def test_gaussian(width, height):
 
 if __name__ == "__main__":
     width, height = 0.5e-2, 0.5e-2
-    # test_slit_aperture_1D(width)
-    # test_slit_aperture_2D(width, height)
+    test_slit_aperture_1D(width)
+    test_slit_aperture_2D(width, height)
     test_circular_aperture(width, height)
-    # test_gaussian(width, height)
+    test_gaussian(width, height)

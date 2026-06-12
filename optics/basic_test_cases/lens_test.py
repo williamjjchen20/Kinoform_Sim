@@ -14,16 +14,22 @@ if __name__ == "__main__":
     Lx, Ly, Lz = width, height, 10000
     N=1024
     
-    
+
     simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=N)
+    lens = ThinLens(f=-10, R=0.01, simulation=simulation, z=0.5)
+    
+    # source = Waveform(energy=1.96, simulation = simulation, z=0)
     source = GaussianBeam(energy=1.96, simulation=simulation, z=0, w0=1.0)
-    print(source.simulation)
+    # print(source.simulation)
+    aperture = CircularAperture(simulation, 0.5, 0.1)
+    # source.view(savedir=savedir)
+    lens.build(source)
+    lens.view(savedir=savedir)
     
-    source.view(savedir=savedir)
-    lens = ThinLens(f=1.0, R=0.25, simulation=simulation, z=0.5, wavelength=source.wavelength)
-    z = np.abs(lens.f)
+    # lens = ThinLens(f=1.0, R=0.25, simulation=simulation, z=0.5, wavelength=source.wavelength)
+    # print(lens.field.shape)
     
-    ## Voelz and Roggemann (2009) sampling criterion to avoid aliasing
-    f_s = source.wavelength*z/(2*lens.R) 
-    print("Nyquist Sampling Rate:", f_s)
-    assert(Lx/N < f_s and Ly/N < f_s)
+    # ## Voelz and Roggemann (2009) sampling criterion to avoid aliasing
+    # f_s = source.wavelength*z/(2*lens.R) 
+    # print("Nyquist Sampling Rate:", f_s)
+    # assert(Lx/N < f_s and Ly/N < f_s)

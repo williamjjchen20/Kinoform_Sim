@@ -22,8 +22,11 @@ class ThinLens(Lens):
         # assert np.isclose(d/np.abs(R1), 0.) and np.isclose(d/np.abs(R2), 0.)
         self.R = R
         F = ApertureFunctions()
-        aperture_func = lambda X, Y, z=z, r=R: F.circular_mask(X, Y, z=z, r=R)
-        super().__init__(f, aperture_func, simulation, z, t=0., thickness_func=None, **kwargs)
+        if simulation.dim == 2:
+            aperture_func = lambda X, Y, z=z, r=R: F.circular_mask(X, Y, r=r)
+        else:
+            aperture_func = lambda X, r=R: F.single_slit_1D(X, r=r)
+        super().__init__(f, aperture_func, simulation, z, thickness_func=None, **kwargs)
         
     def func(self, *args, wavelength=6.326e-7):
         X = args[0]
@@ -37,7 +40,36 @@ class ThinLens(Lens):
         t =  np.exp(-1j*k*r_squared/(2*self.f))
         return t
     
+### implement later
+class ThickLens(Lens):
+    ''' 
+    Model the thick lens as a dim+1 dimensional object that requires specific propagation through thickness
+    Includes both refraction and diffraction effects
+    
+    '''
+    
+    pass
         
 class Kinoform(Lens):
-    def __init__(self):
-        pass
+    def __init__(self, f, R, simulation: SimulationObject, z, **kwargs):
+        # assert np.isclose(d/np.abs(R1), 0.) and np.isclose(d/np.abs(R2), 0.)
+        self.R = R
+        F = ApertureFunctions()
+        if simulation.dim == 2:
+            aperture_func = lambda X, Y, z=z, r=R: F.circular_mask(X, Y, r=r)
+        else:
+            aperture_func = lambda X, r=R: F.single_slit_1D(X, r=r)
+            
+        super().__init__(f, aperture_func, simulation, z, thickness_func=None, **kwargs)
+        
+    def func(self, *args, wavelength=6.326e-7):
+        X = args[0]
+        r_squared = X**2
+        k = 2*const.pi/wavelength
+        
+        if self.simulation.dim == 2:
+            Y = args[1]
+            r_squared += Y**2
+
+        t =  np.exp(-1j*k*r_squared/(2*self.f))
+        return t

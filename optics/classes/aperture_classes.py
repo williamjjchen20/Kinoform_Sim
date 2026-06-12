@@ -42,13 +42,19 @@ class DiffractionPatterns():
     
 class ApertureFunctions():
     @staticmethod
-    def circular_mask(X, Y, z=0., r=1.0):
+    def circular_mask(X, Y, r=1.0):
         field = np.zeros_like(X)
         mask = np.sqrt(X**2+Y**2) <= r
         field[mask] = 1.0
         return field
+    
+    @staticmethod
+    def single_slit_1D(X, r=1.0):
+        field = np.zeros_like(X)
+        mask = np.abs(X) <= r
+        field[mask] = 1.0
+        return field
         
-
 class SingleSlit(Aperture):
     def __init__(self, simulation: SimulationObject, z: float, width:float, height:float | None =None):
         self.width = width
