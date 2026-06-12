@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy.constants as const
 
-from classes.classes import Waveform, SimulationObject
+from classes.classes import SimulationObject
 
 def angular_spectrum_method(U: np.ndarray, z: float, simulation: SimulationObject, wavelength: float, n=1, dim=1) -> np.ndarray:
     '''

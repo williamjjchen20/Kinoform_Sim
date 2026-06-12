@@ -3,6 +3,8 @@ import xraylib
 import matplotlib.pyplot as plt
 import scipy.constants as const
 import functools, os
+from collections.abc import Callable
+
 
 JOULE_TO_EV = 1/const.e
 __all__ = ["SimulationObject", "Waveform", "Aperture", "Lens"]
@@ -59,8 +61,9 @@ class SimulationObject:
         pass
             
 class Object():
-    def __init__(self, simulation: SimulationObject, z: float, init_field=False, func=None, **kwargs):
+    def __init__(self, simulation: SimulationObject, z: float, func=None, **kwargs):
         # Associate object with provided simulation suite
+        self.kwargs = kwargs
         self.simulation = simulation
         self.dim = simulation.dim
         simulation.add_object(self)
@@ -71,9 +74,8 @@ class Object():
         if func is not None: self.func = func
             
         self._build_grid()
-        self.kwargs = kwargs
-        self.field = None
-        if init_field: self._build_field(**kwargs)
+        # self.field = None
+        self._build_field(**kwargs)
         
     def _build_grid(self):
         sim = self.simulation
@@ -140,7 +142,7 @@ class Waveform(Object):
         self.wavelength =  (const.h * const.c) * JOULE_TO_EV / energy # [m]
         self.frequency = const.c / self.wavelength # [Hz]
         
-        super().__init__(simulation, z, init_field=True, func=func, **kwargs) #functools.partial(distribution_func, wavelength=self.wavelength, n=simulation.n)) # type: ignore
+        super().__init__(simulation, z, func=func, **kwargs) #functools.partial(distribution_func, wavelength=self.wavelength, n=simulation.n)) # type: ignore
         
     def __repr__(self):
         return f"{self.simulation.dim}-D Waveform with energy {self.energy:.3e} eV at {self.center}"
@@ -156,7 +158,7 @@ class Waveform(Object):
         
 class Aperture(Object):
     def __init__(self, simulation: SimulationObject, z, func=None, **kwargs):
-        super().__init__(simulation, z, init_field=True, func=func, **kwargs)
+        super().__init__(simulation, z, func=func, **kwargs)
         
     def __repr__(self):
         return f"Thin aperture located at {self.center}"
@@ -165,57 +167,42 @@ class Aperture(Object):
         wave.field *= self.field
         
 
-class Lens(Object):
+class Lens(Aperture):
     
-    def __init__(self, f, aperture_func, simulation: SimulationObject, z:float, thickness_func=None, wavelength=None, **kwargs):
+    def __init__(self, f, aperture_func, simulation: SimulationObject, z:float, thickness_func = None, n =1.0, **kwargs):
         '''
         args
         - f: focal length [m]
         - aperture_func: lens aperture function over grid
         '''
         self.f = f
+        self.n = n
         self.aperture = aperture_func
+        if thickness_func is not None: self.thickness = thickness_func # type: ignore
+          
+        super().__init__(simulation, z, func=aperture_func, **kwargs)
         
-        ## implements lens phase screen
-        if thickness_func is not None: 
-            func = Lens.transmittance(thickness_func, **kwargs)
-        else:
-            func = None
-            
-        super().__init__(simulation, z, init_field=False, func=func, **kwargs)
-        if wavelength is not None: self._build_field(wavelength=wavelength, **kwargs)
-            
-    def build(self, wave: Waveform):
-        self._build_field(wavelength=wave.wavelength, **self.kwargs)
-        if self.dim == 1: 
-            self.field *= self.aperture(self.grid)
-        else: 
-            self.field *= self.aperture(*self.grid)
-    
-    @staticmethod
-    def transmittance(thickness_func, **kwargs):
-        '''
-        args
-        - t: thickness of lens on axis
-        - thickness_func: thickness function z(x, y)
-
-        returns
-        - func: distribution function used for object initialization
-        '''
-        k = 2*const.pi/kwargs["wavelength"]
-        n = kwargs["n"]
-        func = lambda *args: np.exp(1j*k*(n-1.)*thickness_func(*args))
-        return func
-    
-    def thickness(self):
+    def thickness(self, *args, **kwargs):
         raise NotImplementedError
+    
+    def transmittance(self, *args, **kwargs):
+        k = 2*const.pi/kwargs["wavelength"]
+        n = self.n
+        t = np.exp(1j*k*(n-1.)*self.thickness(*args, **kwargs))
+        return t
+    
+    ## implements lens phase screen          
+    def init_transmittance(self, wave: Waveform):
+        t_l = self.transmittance
+            
+        if self.dim == 1:
+            self.field = self.field.astype(np.complex128)* t_l(self.grid, wavelength=wave.wavelength,**self.kwargs)
+        else: # dim == 2
+            self.field = self.field.astype(np.complex128)* t_l(*self.grid, wavelength=wave.wavelength,**self.kwargs)
     
     def __repr__(self):
         return f"Lens located at {self.center} with focal length {self.f}"
     
-    def transform(self, wave: Waveform):
-        wave.field *= self.field
-        
     def angle(self):
         field = np.where(self.field > 0, self.field, 0.)
         return np.angle(field)
