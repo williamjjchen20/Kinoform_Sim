@@ -48,8 +48,7 @@ class GaussianBeam(Waveform):
         '''
         super().__init__(energy, simulation, z, **kwargs)
         
-    def func(self, *args, U0=1.0, w0=1.0):
-        z = args[-1]
+    def func(self, *args, z=0., U0=1.0, w0=1.0):
         wavelength = self.wavelength
         n = self.simulation.n
         
@@ -77,7 +76,7 @@ class ConstantBeam(Waveform):
         
         super().__init__(energy, simulation, z, **kwargs)
        
-    def func(self, *args, U0=1.0):
+    def func(self, *args, z=0, U0=1.0):
         X = args[0]
         U = np.ones_like(X)*U0
         return U

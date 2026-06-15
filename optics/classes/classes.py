@@ -89,9 +89,9 @@ class Object():
     def _build_field(self, **kwargs):
         z = self.center[-1]
         if self.simulation.dim == 1:
-            self.field = self.func(self.grid, z, **kwargs)
+            self.field = self.func(self.grid, z=z,**kwargs)
         else:
-            self.field = self.func(*self.grid, z, **kwargs)
+            self.field = self.func(*self.grid, z=z,**kwargs)
 
     def func(self, *args, **kwargs):
         raise NotImplementedError("Distribution function has not been provided!")
@@ -111,7 +111,6 @@ class Object():
         else:
             data = self.field
 
-            
         if self.simulation.dim == 2:
             Lx, Ly = self.simulation.Lx, self.simulation.Ly
             im = ax.imshow(
@@ -181,6 +180,8 @@ class Lens(Aperture):
         if thickness_func is not None: self.thickness = thickness_func # type: ignore
           
         super().__init__(simulation, z, func=aperture_func, **kwargs)
+        self.aperture_field = self.field
+        self._transmittance_initialized = False
         
     def thickness(self, *args, **kwargs):
         raise NotImplementedError
@@ -193,15 +194,24 @@ class Lens(Aperture):
     
     ## implements lens phase screen          
     def init_transmittance(self, wave: Waveform):
+        assert(not self._transmittance_initialized)
         t_l = self.transmittance
-            
-        if self.dim == 1:
-            self.field = self.field.astype(np.complex128)* t_l(self.grid, wavelength=wave.wavelength,**self.kwargs)
-        else: # dim == 2
-            self.field = self.field.astype(np.complex128)* t_l(*self.grid, wavelength=wave.wavelength,**self.kwargs)
+        base = self.field.astype(np.complex128)
+        if self.simulation.dim == 1:
+            self.field = base * t_l(self.grid, wavelength=wave.wavelength, **self.kwargs)
+        else:
+            self.field = base * t_l(*self.grid, wavelength=wave.wavelength, **self.kwargs)
+        
+        self._transmittance_initialized = True
     
     def __repr__(self):
         return f"Lens located at {self.center} with focal length {self.f}"
+    
+    def transform(self, wave: Waveform):
+        if not self._transmittance_initialized:
+            self.init_transmittance(wave)
+            self._transmittance_initialized = True
+        wave.field *= self.field
     
     def angle(self):
         field = np.where(self.field > 0, self.field, 0.)
