@@ -60,7 +60,7 @@ class XrayParabolicLens(Lens):
     def __init__(self, f, R, n, simulation: SimulationObject, z, **kwargs):
         # assert np.isclose(d/np.abs(R1), 0.) and np.isclose(d/np.abs(R2), 0.)
         self.R = R
-        self.delta = (n-1.).real
+        self.delta = (1.-n).real
 
         F = ApertureFunctions()
         if simulation.dim == 2:
@@ -76,7 +76,7 @@ class XrayParabolicLens(Lens):
             Y = args[1]
             r_squared += Y**2
         # Elements of modern x-ray physics (2001)
-        t_parabolic = -r_squared/(2*self.f*self.delta)
+        t_parabolic = r_squared/(2*self.f*self.delta)
     
         return t_parabolic
     
@@ -116,7 +116,7 @@ class Kinoform(Lens):
     def __init__(self, f, R, n, simulation: SimulationObject, z, **kwargs):
         # assert np.isclose(d/np.abs(R1), 0.) and np.isclose(d/np.abs(R2), 0.)
         self.R = R
-        self.delta = (n-1.).real
+        self.delta = (1.-n).real
 
         F = ApertureFunctions()
         if simulation.dim == 2:
@@ -133,7 +133,7 @@ class Kinoform(Lens):
             Y = args[1]
             r_squared += Y**2
         t_parabolic = r_squared/(2*self.f*self.delta)
-        return -(t_parabolic % t_2pi)
+        return t_parabolic % t_2pi
     
     def profile(self, wavelength, ax=None, savedir="", y=0.0):
         '''

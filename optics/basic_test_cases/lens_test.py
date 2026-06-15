@@ -49,7 +49,7 @@ def test_lens_xray():
     print("Testing Parabolic Lens (X-ray)...")
     width, height = 1.5e-4, 1.5e-4
     Lx, Ly, Lz = width, height, 10000
-    N=1024
+    N=2048
     
     # parameters for simulation
     E = 8.5e3 # keV
@@ -99,7 +99,7 @@ def test_kinoform():
     print("Testing Kinoform (X-ray)...")
     width, height = 1.5e-4, 1.5e-4
     Lx, Ly, Lz = width, height, 10000
-    N=1024
+    N=2048
     
     # parameters for simulation
     E = 8.5e3 # keV
