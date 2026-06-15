@@ -52,7 +52,7 @@ class SimulationObject:
                 self.objects["source"] = object
             case Aperture():
                 self.objects["aperture"] = object
-            case Lens():
+            case ThinLens():
                 self.objects["lens"] = object
             case _:
                 raise Exception("Unknown Object")
@@ -106,7 +106,7 @@ class Object():
         
         if isinstance(self, Waveform):
             data = self.intensity()
-        elif isinstance(self, Lens):
+        elif isinstance(self, ThinLens):
             data = self.angle()
         else:
             data = self.field
@@ -165,8 +165,7 @@ class Aperture(Object):
     def transform(self, wave: Waveform):
         wave.field *= self.field
         
-
-class Lens(Aperture):
+class ThinLens(Aperture):
     
     def __init__(self, f, aperture_func, simulation: SimulationObject, z:float, thickness_func = None, n =1.0, **kwargs):
         '''
@@ -182,7 +181,10 @@ class Lens(Aperture):
         super().__init__(simulation, z, func=aperture_func, **kwargs)
         self.aperture_field = self.field
         self._transmittance_initialized = False
-        
+             
+    def __repr__(self):
+        return f"Lens located at {self.center} with focal length {self.f}"
+    
     def thickness(self, *args, **kwargs):
         raise NotImplementedError
     
@@ -203,10 +205,7 @@ class Lens(Aperture):
             self.field = base * t_l(*self.grid, wavelength=wave.wavelength, **self.kwargs)
         
         self._transmittance_initialized = True
-    
-    def __repr__(self):
-        return f"Lens located at {self.center} with focal length {self.f}"
-    
+        
     def transform(self, wave: Waveform):
         if not self._transmittance_initialized:
             self.init_transmittance(wave)
@@ -217,5 +216,5 @@ class Lens(Aperture):
         field = np.where(self.field > 0, self.field, 0.)
         return np.angle(field)
         
-    def side_view(self):
-        pass
+    def profile(self):
+        raise NotImplementedError

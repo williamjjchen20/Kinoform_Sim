@@ -4,28 +4,14 @@ import scipy.constants as const
 import matplotlib.pyplot as plt
 import os
 
-from classes import SimulationObject, Lens
+from classes import SimulationObject, ThinLens
 from .aperture_classes import *
 
-class ThicknessFunctions():
-    @staticmethod
-    def concave_plano_1D(X, f: float, n: float | complex):
-        l = np.sqrt(X**2 + f**2) - f
-        return l/n.real
-    
-    def concave_plano_2D(self):
-        pass
-    
-    @staticmethod
-    def short_kl_1D(X, j: int | np.ndarray, f: float, m: int, wavelength: float, n: float | complex):
-        xj_sq = 2*j*(m*wavelength)*f + j**2*(m*wavelength)**2
-        l = np.sqrt(X**2 + f**2) - np.sqrt(xj_sq+f**2)
-        return l/n.real
-    
-class ThinLens(Lens):
+class CircularLens(ThinLens):
     def __init__(self, f, R, n, simulation: SimulationObject, z, **kwargs):
         # assert np.isclose(d/np.abs(R1), 0.) and np.isclose(d/np.abs(R2), 0.)
         self.R = R
+        self.delta = (1.-n).real
         
         F = ApertureFunctions()
         if simulation.dim == 2:
@@ -33,6 +19,41 @@ class ThinLens(Lens):
         else:
             aperture_func = lambda X, r=R: F.single_slit_1D(X, r=r)
         super().__init__(f, aperture_func, simulation, z, thickness_func=None, n=n, **kwargs)
+        
+    def profile(self, wavelength, ax=None, savedir="", y=0.0):
+        '''
+        Plot the side profile (thickness vs. x) of the kinoform.
+        For 2D simulations, takes a slice at y = `y`.
+        '''
+        if ax is None:
+            fig, ax = plt.subplots()
+        else:
+            fig = ax.get_figure()
+        
+        if self.simulation.dim == 1:
+            x = self.grid
+            t = self.thickness(x, wavelength=wavelength)
+        else:
+            X, Y = self.grid
+            x = X[0, :]
+            y_row = np.full_like(x, y)
+            t = self.thickness(x, y_row, wavelength=wavelength)
+        
+        mask = np.abs(x) <= self.R
+        ax.fill_between(x[mask], 0, t[mask], color="steelblue", alpha=0.6)
+        ax.plot(x[mask], t[mask], color="navy", lw=1)
+        ax.set(xlabel="x [m]", ylabel="thickness [m]",
+               title=f"Circular Lens profile (f={self.f:.3g} m, R={self.R:.3g} m)")
+        ax.set_xlim(-self.R, self.R)
+        ax.axhline(0, color="black", lw=0.5)
+        
+        if savedir:
+            plt.savefig(os.path.join(savedir, f"{type(self).__name__}_profile_z={self.center[-1]}.png"))
+        return ax
+    
+class OpticalLens(CircularLens):
+    def __init__(self, f, R, n, simulation: SimulationObject, z, **kwargs):
+        super().__init__(f, R, n, simulation, z,**kwargs)
         
     def transmittance(self, *args, wavelength, **kwargs):
         X = args[0]
@@ -45,29 +66,10 @@ class ThinLens(Lens):
 
         t =  np.exp(-1j*k*r_squared/(2*self.f))
         return t
-    
-### implement later
-class ThickLens(Lens):
-    ''' 
-    Model the thick lens as a dim+1 dimensional object that requires specific propagation through thickness
-    Includes both refraction and diffraction effects
-    
-    '''
-    
-    pass
 
-class XrayParabolicLens(Lens):
+class XrayParabolicLens(CircularLens):
     def __init__(self, f, R, n, simulation: SimulationObject, z, **kwargs):
-        # assert np.isclose(d/np.abs(R1), 0.) and np.isclose(d/np.abs(R2), 0.)
-        self.R = R
-        self.delta = (1.-n).real
-
-        F = ApertureFunctions()
-        if simulation.dim == 2:
-            aperture_func = lambda X, Y, z=z, r=self.R: F.circular_mask(X, Y, r=r)
-        else:
-            aperture_func = lambda X, r=self.R: F.single_slit_1D(X, r=r)
-        super().__init__(f, aperture_func, simulation, z, thickness_func=None, n=n, **kwargs)
+        super().__init__(f, R, n, simulation, z,**kwargs)
         
     def thickness(self, *args, wavelength, **kwargs):
         X = args[0]
@@ -79,51 +81,10 @@ class XrayParabolicLens(Lens):
         t_parabolic = r_squared/(2*self.f*self.delta)
     
         return t_parabolic
-    
-    def profile(self, wavelength, ax=None, savedir="", y=0.0):
-        '''
-        Plot the side profile (thickness vs. x) of the kinoform.
-        For 2D simulations, takes a slice at y = `y`.
-        '''
-        if ax is None:
-            fig, ax = plt.subplots()
-        else:
-            fig = ax.get_figure()
         
-        if self.simulation.dim == 1:
-            x = self.grid
-            t = self.thickness(x, wavelength=wavelength)
-        else:
-            X, Y = self.grid
-            x = X[0, :]
-            y_row = np.full_like(x, y)
-            t = self.thickness(x, y_row, wavelength=wavelength)
-        
-        mask = np.abs(x) <= self.R
-        ax.fill_between(x[mask], 0, t[mask], color="steelblue", alpha=0.6)
-        ax.plot(x[mask], t[mask], color="navy", lw=1)
-        ax.set(xlabel="x [m]", ylabel="thickness [m]",
-               title=f"Lens profile (f={self.f:.3g} m, R={self.R:.3g} m)")
-        ax.set_xlim(-self.R, self.R)
-        ax.axhline(0, color="black", lw=0.5)
-        
-        if savedir:
-            plt.savefig(os.path.join(savedir, f"{type(self).__name__}_profile_z={self.center[-1]}.png"))
-        return ax
-    
-        
-class Kinoform(Lens):
+class Kinoform(CircularLens):
     def __init__(self, f, R, n, simulation: SimulationObject, z, **kwargs):
-        # assert np.isclose(d/np.abs(R1), 0.) and np.isclose(d/np.abs(R2), 0.)
-        self.R = R
-        self.delta = (1.-n).real
-
-        F = ApertureFunctions()
-        if simulation.dim == 2:
-            aperture_func = lambda X, Y, z=z, r=self.R: F.circular_mask(X, Y, r=r)
-        else:
-            aperture_func = lambda X, r=self.R: F.single_slit_1D(X, r=r)
-        super().__init__(f, aperture_func, simulation, z, thickness_func=None, n=n, **kwargs)
+        super().__init__(f, R, n, simulation, z,**kwargs)
         
     def thickness(self, *args, wavelength, **kwargs):
         X = args[0]
@@ -134,37 +95,3 @@ class Kinoform(Lens):
             r_squared += Y**2
         t_parabolic = r_squared/(2*self.f*self.delta)
         return t_parabolic % t_2pi
-    
-    def profile(self, wavelength, ax=None, savedir="", y=0.0):
-        '''
-        Plot the side profile (thickness vs. x) of the kinoform.
-        For 2D simulations, takes a slice at y = `y`.
-        '''
-        if ax is None:
-            fig, ax = plt.subplots()
-        else:
-            fig = ax.get_figure()
-        
-        if self.simulation.dim == 1:
-            x = self.grid
-            t = self.thickness(x, wavelength=wavelength)
-        else:
-            X, Y = self.grid
-            x = X[0, :]
-            y_row = np.full_like(x, y)
-            t = self.thickness(x, y_row, wavelength=wavelength)
-        
-        mask = np.abs(x) <= self.R
-        ax.fill_between(x[mask], 0, t[mask], color="steelblue", alpha=0.6)
-        ax.plot(x[mask], t[mask], color="navy", lw=1)
-        ax.set(xlabel="x [m]", ylabel="thickness [m]",
-               title=f"Lens profile (f={self.f:.3g} m, R={self.R:.3g} m)")
-        ax.set_xlim(-self.R, self.R)
-        ax.axhline(0, color="black", lw=0.5)
-        
-        if savedir:
-            plt.savefig(os.path.join(savedir, f"{type(self).__name__}_profile_z={self.center[-1]}.png"))
-        return ax
-        
-
-        

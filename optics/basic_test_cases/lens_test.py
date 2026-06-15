@@ -21,7 +21,7 @@ def test_standard_lens():
     propagator = functools.partial(angular_spectrum_method, dim=2)
     
     source = GaussianBeam(energy=1.96, simulation=simulation, z=0, w0=1.0)
-    lens = ThinLens(f=10, R=0.01, n=1.5, simulation=simulation, z=0)
+    lens = OpticalLens(f=10, R=0.01, n=1.5, simulation=simulation, z=0)
     lens.init_transmittance(source)
     lens.view(ax=ax[0, 0])
     source.view(ax=ax[0, 1])
@@ -113,7 +113,6 @@ def test_kinoform():
     propagator = functools.partial(angular_spectrum_method, dim=2)
     
     source = ConstantBeam(energy=E, simulation=simulation, z=0)
-    print(source.wavelength)
     lens = Kinoform(f=f, R=R, n=n, simulation=simulation, z=0)    
     lens.profile(source.wavelength, ax=plt.figure().gca(),savedir=savedir)
     
