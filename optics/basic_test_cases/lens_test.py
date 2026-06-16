@@ -59,7 +59,8 @@ def test_lens_xray():
     print("Refractive Index:", n)
     assert (R < Lx and R < Ly)
     
-    fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(12, 4), squeeze=False, sharey=True)
+    fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(15, 4), squeeze=False, sharey=True)
+    plt.subplots_adjust(wspace=2.0)
     
     simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=N)
     propagator = functools.partial(angular_spectrum_method, dim=2)
@@ -71,8 +72,8 @@ def test_lens_xray():
     fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(12, 4), squeeze=False, sharey=True) 
     
     lens.init_transmittance(source)
-    lens.view(ax=ax[0, 0])
-    source.view(ax=ax[0, 1])
+    lens.view(ax=ax[0, 0], show_label=True)
+    source.view(ax=ax[0, 1], show_label=True)
     
     ## Voelz and Roggemann (2009) sampling criterion to avoid aliasing
     f_s = source.wavelength*np.abs(lens.f)/(2*lens.R) 
@@ -86,7 +87,7 @@ def test_lens_xray():
     lens.transform(source)
     print("Post-Lens Max Intensity:", np.max(source.intensity()))
     source.propagate(z2, propagator)
-    source.view(ax=ax[0, 2])
+    source.view(ax=ax[0, 2], show_label=True)
     print("Final Max Intensity:", np.max(source.intensity()))
     
     ax[0,0].set(title=rf"Transmittance Phase(R={lens.R*1e6} $\mu m$, f={lens.f} m)")
@@ -133,7 +134,7 @@ def test_kinoform():
     lens.transform(source)
     print("Post-Lens Max Intensity:", np.max(source.intensity()))
     source.propagate(z2, propagator)
-    source.view(ax=ax[0, 2])
+    source.view(ax=ax[0, 2], show_label=True)
     print("Final Max Intensity:", np.max(source.intensity()))
     
     ax[0,0].set(title=f"Transmittance Phase (R={lens.R*1000} mm, f={lens.f} m)")
@@ -144,5 +145,5 @@ def test_kinoform():
 if __name__ == "__main__":
     # test_standard_lens()
     test_lens_xray()
-    test_kinoform()
+    # test_kinoform()
     

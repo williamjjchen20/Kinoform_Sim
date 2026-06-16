@@ -1,13 +1,14 @@
 import numpy as np
 import xraylib
 import matplotlib.pyplot as plt
+import matplotlib.colors as colors
 import scipy.constants as const
 import functools, os
 from collections.abc import Callable
 
 
 JOULE_TO_EV = 1/const.e
-__all__ = ["SimulationObject", "Waveform", "Aperture", "Lens"]
+__all__ = ["SimulationObject", "Waveform", "Aperture", "ThinLens"]
 
 class SimulationObject:
     
@@ -106,23 +107,31 @@ class Object():
         
         if isinstance(self, Waveform):
             data = self.intensity()
+            data = data/np.max(data)
+            norm = colors.LogNorm(vmin=1e-4, vmax=data.max())
+            label = " Normalized Intensity"
         elif isinstance(self, ThinLens):
             data = self.angle()
+            norm = colors.Normalize(vmin=data.min(), vmax=data.max())
+            label= "Phase"
         else:
             data = self.field
-
+            norm = colors.Normalize(vmin=0., vmax=data.max())
+            label = ""
+            
         if self.simulation.dim == 2:
             Lx, Ly = self.simulation.Lx, self.simulation.Ly
             im = ax.imshow(
                 data,
+                norm = norm,
                 cmap=cmap,
                 extent=[-Lx/2, Lx/2, -Ly/2, Ly/2], #type: ignore
-                vmin=0.0,
-                vmax=1.0
             )
             if show_label:
-                fig.colorbar(im, ax=ax, orientation='vertical',
-                            fraction=0.02, pad=0.04, extend='max')
+                cbar = fig.colorbar(im, ax=ax, orientation='vertical',
+                            fraction=0.03, pad=0.04, extend='max')
+
+                cbar.set_label(label)
             ax.set(xlabel="x [m]", ylabel="y [m]", xlim=xlim, ylim=ylim)
         else:
             ax.plot(self.grid, data)
@@ -153,7 +162,8 @@ class Waveform(Object):
         self.center[-1] += z
         
     def intensity(self):
-        return np.abs(self.field)**2
+        I = np.abs(self.field)**2
+        return I
         
 class Aperture(Object):
     def __init__(self, simulation: SimulationObject, z, func=None, **kwargs):
