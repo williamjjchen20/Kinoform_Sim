@@ -87,6 +87,7 @@ class Kinoform(CircularLens):
         super().__init__(f, R, n, simulation, z,**kwargs)
         
     def thickness(self, *args, wavelength, **kwargs):
+        ## Note: Bandwidth limited by requiring wavelength for a specific energy of x-ray
         X = args[0]
         r_squared = X**2
         t_2pi = wavelength/self.delta

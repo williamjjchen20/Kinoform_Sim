@@ -77,7 +77,6 @@ def beam_propagation_method(U: np.ndarray, z: float, simulation: SimulationObjec
     It is better suited for propagation through thick lenses that cannot be approximated as a phase screen.
     '''
     
-    
     return
     
 def fresnel_method():

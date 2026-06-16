@@ -24,7 +24,7 @@ def test_kinoform():
     print("Refractive Index:", n)
     assert (R < Lx and R < Ly)
     
-    simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz)
+    simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny = N)
     propagator = functools.partial(angular_spectrum_method, dim=2)
     
     source = GaussianBeam(energy=E, simulation=simulation, z=0, w0=4e-5)
@@ -34,6 +34,8 @@ def test_kinoform():
     print(fwhm)
     Imax, Iavg = intensity_stats(source)
     print(Imax, Iavg)
-
+    P = total_power(source)
+    print(P)
+    
 if __name__ == "__main__":
     test_kinoform()

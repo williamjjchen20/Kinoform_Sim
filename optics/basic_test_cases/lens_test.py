@@ -73,7 +73,7 @@ def test_lens_xray():
     
     lens.init_transmittance(source)
     lens.view(ax=ax[0, 0], show_label=True)
-    source.view(ax=ax[0, 1], show_label=True)
+    source.view(ax=ax[0, 1])
     
     ## Voelz and Roggemann (2009) sampling criterion to avoid aliasing
     f_s = source.wavelength*np.abs(lens.f)/(2*lens.R) 
@@ -119,7 +119,7 @@ def test_kinoform():
     
     fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(12, 4), squeeze=False, sharey=True)
     lens.init_transmittance(source)
-    lens.view(ax=ax[0, 0])
+    lens.view(ax=ax[0, 0], show_label=True)
     source.view(ax=ax[0, 1])
     
     ## Voelz and Roggemann (2009) sampling criterion to avoid aliasing
