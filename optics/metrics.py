@@ -2,7 +2,7 @@ import numpy as np
 import xraylib as xrl
 import scipy.integrate as integrate
 
-from classes import Waveform
+from .classes import Waveform
 
 def FWHM(wave: Waveform):
     '''
@@ -89,3 +89,4 @@ def strehl_ratio(wave1: Waveform, wave2: Waveform):
     I1 = wave1.intensity()
     I2 = wave2.intensity()
     return I2/I1
+

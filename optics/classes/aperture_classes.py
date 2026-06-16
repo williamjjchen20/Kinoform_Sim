@@ -2,7 +2,7 @@ import numpy as np
 import scipy.constants as const
 import scipy.special as f
 
-from classes import Aperture, SimulationObject
+from .classes import Aperture, SimulationObject
 
 class DiffractionPatterns():
     @staticmethod

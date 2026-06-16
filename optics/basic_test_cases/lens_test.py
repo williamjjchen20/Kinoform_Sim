@@ -3,12 +3,13 @@ import scipy.constants as const
 import matplotlib.pyplot as plt
 import xraylib as xrl
 import os, sys, functools
+from pathlib import Path
 
-from propagators import *
-from classes import *
+from ..propagators import *
+from ..classes import *
 
-
-savedir ="test_figs/simulation_figs"
+script_dir = Path(__file__).resolve().parent
+savedir = (script_dir / "../test_figs").resolve()
 
 def test_standard_lens():
     width, height = 0.06, 0.06
@@ -67,7 +68,7 @@ def test_lens_xray():
     
     source = ConstantBeam(energy=E, simulation=simulation, z=0)
     lens = XrayParabolicLens(f=f, R=R, n=n, simulation=simulation, z=0)   
-    lens.profile(source.wavelength, ax=plt.figure().gca(), savedir=savedir)
+    lens.profile(source.wavelength, ax=plt.figure().gca(), savedir=str(savedir))
     
     fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(12, 4), squeeze=False, sharey=True) 
     
@@ -115,7 +116,7 @@ def test_kinoform():
     
     source = ConstantBeam(energy=E, simulation=simulation, z=0)
     lens = Kinoform(f=f, R=R, n=n, simulation=simulation, z=0)    
-    lens.profile(source.wavelength, ax=plt.figure().gca(),savedir=savedir)
+    lens.profile(source.wavelength, ax=plt.figure().gca(),savedir=str(savedir))
     
     fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(12, 4), squeeze=False, sharey=True)
     lens.init_transmittance(source)
@@ -143,7 +144,7 @@ def test_kinoform():
     plt.savefig(os.path.join(savedir, "Ideal_Kinoform"))
 
 if __name__ == "__main__":
-    # test_standard_lens()
+    test_standard_lens()
     test_lens_xray()
-    # test_kinoform()
+    test_kinoform()
     

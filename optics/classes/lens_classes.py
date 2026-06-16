@@ -4,8 +4,8 @@ import scipy.constants as const
 import matplotlib.pyplot as plt
 import os
 
-from classes import SimulationObject, ThinLens
-from .aperture_classes import *
+from .classes import SimulationObject, ThinLens
+from .aperture_classes import ApertureFunctions
 
 class CircularLens(ThinLens):
     def __init__(self, f, R, n, simulation: SimulationObject, z, **kwargs):

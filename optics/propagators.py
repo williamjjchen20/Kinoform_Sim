@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy.constants as const
 
-from classes.classes import SimulationObject
+from .classes import SimulationObject
 
 def angular_spectrum_method(U: np.ndarray, z: float, simulation: SimulationObject, wavelength: float, n=1, dim=1) -> np.ndarray:
     '''
@@ -61,7 +61,6 @@ def angular_spectrum_method(U: np.ndarray, z: float, simulation: SimulationObjec
         band_mask = np.abs(kx) <= kx_max
         band_mask &= np.abs(ky) <= ky_max
         
-
     # Transfer function H
     H = np.exp(1j*kz*z)
     H[K_c > K**2] = 0 # evanescent waves filtered out 

@@ -1,7 +1,7 @@
 import numpy as np
 import scipy.constants as const
 
-from classes import Waveform, SimulationObject
+from .classes import Waveform, SimulationObject
 
 class WaveFunctions():
     @staticmethod

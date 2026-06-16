@@ -3,9 +3,13 @@ import scipy.constants as const
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import os, functools
+from pathlib import Path
 
-from propagators import angular_spectrum_method
-from classes import *
+from ..propagators import angular_spectrum_method
+from ..classes import *
+
+script_dir = Path(__file__).resolve().parent
+savedir = (script_dir / "../test_figs").resolve()
 
 A = DiffractionPatterns()
 

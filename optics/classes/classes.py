@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import scipy.constants as const
 import functools, os
-from collections.abc import Callable
 
 
 JOULE_TO_EV = 1/const.e
@@ -93,6 +92,7 @@ class Object():
             self.field = self.func(self.grid, z=z,**kwargs)
         else:
             self.field = self.func(*self.grid, z=z,**kwargs)
+        self.field = self.field.astype(np.complex128)
 
     def func(self, *args, **kwargs):
         raise NotImplementedError("Distribution function has not been provided!")

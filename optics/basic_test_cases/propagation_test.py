@@ -1,12 +1,15 @@
 import numpy as np
 import scipy.constants as const
 import matplotlib.pyplot as plt
-import os, functools
+import os, sys, functools
+from pathlib import Path
 
-from propagators import angular_spectrum_method
-from classes import *
+from ..propagators import angular_spectrum_method
+from ..classes import *
 
-root = "test_figs/"
+script_dir = Path(__file__).resolve().parent
+savedir = (script_dir / "../test_figs").resolve()
+
 F = WaveFunctions()
 
 def test_gaussian_1D(propagation_func):
@@ -49,7 +52,7 @@ def test_gaussian_1D(propagation_func):
     print("Average Relative Error:", np.mean(rel_err))
     ax[0, 2].plot(x, rel_err)
     ax[0, 2].set(title="Relative Error")
-    plt.savefig(os.path.join(root, "1D_Gaussian_Beam_Validation"))
+    plt.savefig(os.path.join(savedir, "1D_Gaussian_Beam_Validation"))
 
 
 def test_gaussian_2D(propagation_func):
@@ -91,7 +94,7 @@ def test_gaussian_2D(propagation_func):
     ax[0, 3].set(title="Relative Error")
 
     fig.colorbar(im, ax=ax, orientation='vertical', fraction=0.02, pad=0.04, label='Intensity')
-    plt.savefig(os.path.join(root, "2D_Gaussian_Beam_Validation"))
+    plt.savefig(os.path.join(savedir, "2D_Gaussian_Beam_Validation"))
 
 
 def test_constant_1D(propagation_func):
@@ -133,7 +136,7 @@ def test_constant_1D(propagation_func):
     print("Average Relative Error:", np.mean(rel_err))
     ax[0, 2].plot(x, rel_err)
     ax[0, 2].set(title="Relative Error")
-    plt.savefig(os.path.join(root, "1D_Constant_Beam_Validation"))
+    plt.savefig(os.path.join(savedir, "1D_Constant_Beam_Validation"))
 
 
 if __name__ == "__main__":
