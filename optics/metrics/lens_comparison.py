@@ -8,8 +8,8 @@ from pathlib import Path
 import argparse
 
 from ..propagators import *
-from .metrics import *
 from ..classes import *
+from .metrics import *
 
 
 script_dir = Path(__file__).resolve().parent
@@ -173,7 +173,7 @@ def take_user_input():
     done = False
     lens_list = []
     while not done:
-        print("Please input lens types to compare (Parabolic, Kinoform) or '' when complete. ")
+        print("Please input lens types to compare (Parabolic, Kinoform) or  when complete. ")
         lens = input("Type of lens to add: ")
         
         match lens:
@@ -185,7 +185,8 @@ def take_user_input():
                 done = True
             case _:
                 raise Exception("Unknown lens type")
-            
+        
+        
         print(f"Added {lens}!")
     return lens_list
         
@@ -193,4 +194,4 @@ def take_user_input():
 if __name__ == "__main__":
     lens_list = take_user_input()
     print(lens_list)
-    test_compare_xray_lenses()
+    # test_compare_xray_lenses()
