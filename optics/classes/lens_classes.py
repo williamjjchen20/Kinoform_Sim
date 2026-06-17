@@ -96,3 +96,11 @@ class Kinoform(CircularLens):
             r_squared += Y**2
         t_parabolic = r_squared/(2*self.f*self.delta)
         return t_parabolic % t_2pi
+    
+    def quantization(self, N: int):
+        '''
+        args 
+        - N: quantization steps
+        '''
+        
+        return

@@ -8,7 +8,7 @@ from ..propagators import angular_spectrum_method
 from ..classes import *
 
 script_dir = Path(__file__).resolve().parent
-savedir = (script_dir / "../test_figs").resolve()
+savedir = (script_dir / "../test_figs/propagation_test").resolve()
 
 F = WaveFunctions()
 

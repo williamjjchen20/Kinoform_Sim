@@ -9,7 +9,7 @@ from ..propagators import *
 from ..classes import *
 
 script_dir = Path(__file__).resolve().parent
-savedir = (script_dir / "../test_figs").resolve()
+savedir = (script_dir / "../test_figs/lens_test").resolve()
 
 def test_standard_lens():
     width, height = 0.06, 0.06

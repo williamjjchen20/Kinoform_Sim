@@ -2,7 +2,7 @@ import numpy as np
 import xraylib as xrl
 import scipy.integrate as integrate
 
-from .classes import Waveform
+from ..classes import Waveform
 
 def FWHM(wave: Waveform):
     '''

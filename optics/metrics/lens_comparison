@@ -5,14 +5,15 @@ import matplotlib.colors as colors
 import xraylib as xrl
 import os, functools
 from pathlib import Path
+import argparse
 
 from ..propagators import *
-from ..metrics.metrics import *
+from .metrics import *
 from ..classes import *
 
 
 script_dir = Path(__file__).resolve().parent
-savedir = (script_dir / "../test_figs/metrics").resolve()
+savedir = (script_dir / "./results").resolve()
 
 def run_lens(lens_cls, label, simulation, propagator, E, f, R, n, w0=None):
     '''
@@ -120,7 +121,6 @@ def plot_comparison(parabolic, kinoform, savepath):
     plt.savefig(savepath)
     plt.close(fig)
 
-
 def test_compare_xray_lenses():
     print("Comparing X-ray Parabolic Lens vs. Kinoform...")
 
@@ -152,9 +152,12 @@ def test_compare_xray_lenses():
     )
 
     # Collect & print metrics
+    metrics = []
     m_pf = collect_metrics(focal_pf, Pin_pf, "Parabolic")
     m_kf = collect_metrics(focal_kf, Pin_kf, "Kinoform")
-    print_comparison([m_pf, m_kf])
+    metrics.append(m_pf)
+    metrics.append(m_kf)
+    print_comparison(metrics)
 
     # Strehl-like ratio: peak intensity ratio (kinoform / parabolic)
     print(f"\nPeak intensity ratio (Kinoform / Parabolic): {m_kf['I_max']/m_pf['I_max']:.4f}")
@@ -166,6 +169,28 @@ def test_compare_xray_lenses():
     plot_comparison((focal_pf, lens_pf), (focal_kf, lens_kf), out)
     print(f"Saved comparison figure to {out}")
 
-
+def take_user_input():
+    done = False
+    lens_list = []
+    while not done:
+        print("Please input lens types to compare (Parabolic, Kinoform) or '' when complete. ")
+        lens = input("Type of lens to add: ")
+        
+        match lens:
+            case "Parabolic":
+                lens_list.append(XrayParabolicLens)
+            case "Kinoform":
+                lens_list.append(Kinoform)
+            case "":
+                done = True
+            case _:
+                raise Exception("Unknown lens type")
+            
+        print(f"Added {lens}!")
+    return lens_list
+        
+    
 if __name__ == "__main__":
+    lens_list = take_user_input()
+    print(lens_list)
     test_compare_xray_lenses()
