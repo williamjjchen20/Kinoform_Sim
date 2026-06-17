@@ -1,9 +1,13 @@
-import xraylib
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.constants as const
+import functools
 
 from .classes import SimulationObject
+
+class Propagator():
+    def __init__(self, propagation_func, dim):
+        self.propagator = functools.partial(propagation_func, dim=dim)
 
 def angular_spectrum_method(U: np.ndarray, z: float, simulation: SimulationObject, wavelength: float, n=1, dim=1) -> np.ndarray:
     '''

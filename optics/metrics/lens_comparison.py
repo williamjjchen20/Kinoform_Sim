@@ -11,11 +11,10 @@ from ..propagators import *
 from ..classes import *
 from .metrics import *
 
-
 script_dir = Path(__file__).resolve().parent
 savedir = (script_dir / "./results").resolve()
 
-def run_lens(label: str, lens_cls, simulation: SimulationObject, propagator, E: float, f: float, R: float, n: float | complex, w0=None):
+def run_lens(label: str, lens_cls, simulation: SimulationObject, propagator: Propagator, E: float, f: float, R: float, n: float | complex, w0=None):
     '''
     Initializes a source, applies a lens of class `lens_cls`, propagates to
     the focal plane, and returns (incident_wave, focal_wave, lens).
@@ -40,7 +39,7 @@ def run_lens(label: str, lens_cls, simulation: SimulationObject, propagator, E: 
 
     # propagate to focal plane
     lens.transform(source)
-    source.propagate(lens.f, propagator)
+    source.propagate(lens.f, propagator.propagator)
 
     return source, lens, incident_power
 
@@ -77,28 +76,29 @@ def print_comparison(metrics_list):
     print("=" * len(header))
 
 
-def plot_comparison(lens_dict, savepath):
+def plot_comparison(results, savepath):
     '''
     Plot lens phase, focal-plane intensity (log), and central line cut for an
     arbitrary set of lenses.
 
-    `lens_dict` maps label -> (focal_wave, lens). One row per lens, three
+    `results` maps label -> (focal_wave, lens). One row per lens, three
     columns: phase, focal intensity, central cut.
     '''
-    n_lenses = len(lens_dict)
+    n_lenses = len(results)
     if n_lenses == 0: raise Exception("No lenses added.")
 
     fig, ax = plt.subplots(nrows=n_lenses, ncols=3, figsize=(15, 4.5 * n_lenses), squeeze=False)
     plt.subplots_adjust(wspace=0.35, hspace=0.35)
 
-    intensities = {label: wave.intensity() for label, (wave, _) in lens_dict.items()}
+    intensities = {label: wave.intensity() for label, (wave, _) in results.items()}
     vmax = max(I.max() for I in intensities.values())
     vmin = max(vmax * 1e-6, 1e-20)
     norm = colors.LogNorm(vmin=vmin, vmax=vmax)
 
     cmap_cycle = plt.get_cmap("tab10")
 
-    for i, (label, (wave, lens)) in enumerate(lens_dict.items()):
+    for i, (label, (wave, lens)) in enumerate(results.items()):
+        lens.plot_profile(ax=plt.figure().gca(), savedir=savedir, wavelength=wave.wavelength, label=label)
         Lx, Ly = wave.simulation.Lx, wave.simulation.Ly
         extent = [-Lx/2, Lx/2, -Ly/2, Ly/2]
         I = intensities[label]
@@ -116,14 +116,14 @@ def plot_comparison(lens_dict, savepath):
         ax[i, 2].plot(x, I[cy, :], color=cmap_cycle(i % 10))
         ax[i, 2].set(title=f"{label} Central Cut", xlabel="x [m]", ylabel="Intensity", yscale="log")
 
-    plt.savefig(savepath)
+    fig.savefig(savepath)
     plt.close(fig)
 
-def test_compare_xray_lenses(lens_dict):
+def test_compare_xray_lenses(lens_dict, plot=False):
     print("Comparing Lenses...")
-
+    
     # Parameters
-    N = 2048
+    N = 10000
     Lx = Ly = 1.5e-4
     Lz = 10000
     E = 8.5e3       # eV
@@ -133,7 +133,7 @@ def test_compare_xray_lenses(lens_dict):
     print(f"Refractive index n = {n}")
     print(f"Energy = {E} eV, f = {f} m, R = {R} m")
 
-    propagator = functools.partial(angular_spectrum_method, dim=2)
+    propagator = Propagator(angular_spectrum_method, dim=2)
 
     metrics = []
     results = {}
@@ -149,16 +149,16 @@ def test_compare_xray_lenses(lens_dict):
         results[name] = (source, lens)
 
     print_comparison(metrics)
-
-    out = os.path.join(savedir, "Metrics_Lens_Comparison.png")
-    plot_comparison(results, out)
-    print(f"Saved comparison figure to {out}")
+    
+    if plot:
+        out = os.path.join(savedir, "Metrics_Lens_Comparison.png")
+        plot_comparison(results, out)
+        print(f"Saved comparison figure to {out}")
 
 def take_user_input():
-    done = False
     count = 1
     lens_dict = dict()
-    while not done:
+    while count < 5:
         print("Please input lens types to compare (Parabolic, Kinoform). ")
         lens = input("Type of lens to add: ")
         key = lens+str(count)
@@ -170,8 +170,7 @@ def take_user_input():
             case "Kinoform":
                 lens_dict[key] = [Kinoform]
             case "":
-                done = True
-                continue
+                break
             case _:
                 raise Exception("Unknown lens type")
             
@@ -190,7 +189,7 @@ def take_user_input():
         
 def main():
     lenses = take_user_input()
-    test_compare_xray_lenses(lenses)
+    test_compare_xray_lenses(lenses, plot=True)
 
 if __name__ == "__main__":
     main()

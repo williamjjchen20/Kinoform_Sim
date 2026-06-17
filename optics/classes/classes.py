@@ -190,6 +190,7 @@ class ThinLens(Aperture):
           
         super().__init__(simulation, z, func=aperture_func, **kwargs)
         self.aperture_field = self.field
+        self.profile = self.field
         self._transmittance_initialized = False
              
     def __repr__(self):
@@ -226,5 +227,5 @@ class ThinLens(Aperture):
         field = np.where(self.field > 0, self.field, 0.)
         return np.angle(field)
         
-    def profile(self):
+    def plot_profile(self):
         raise NotImplementedError

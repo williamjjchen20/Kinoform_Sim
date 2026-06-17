@@ -1,6 +1,6 @@
 notebook.ipynb
 test_figs/
-# classes/__pycache__/
+*/test.ipynb
 .gitignore
 
 # Byte-compiled / optimized / DLL files

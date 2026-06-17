@@ -20,7 +20,7 @@ class CircularLens(ThinLens):
             aperture_func = lambda X, r=R: F.single_slit_1D(X, r=r)
         super().__init__(f, aperture_func, simulation, z, thickness_func=None, n=n, **kwargs)
         
-    def profile(self, wavelength, ax=None, savedir="", y=0.0):
+    def plot_profile(self, wavelength, ax=None, savedir="", label=None, y=0.0):
         '''
         Plot the side profile (thickness vs. x) of the kinoform.
         For 2D simulations, takes a slice at y = `y`.
@@ -43,12 +43,15 @@ class CircularLens(ThinLens):
         ax.fill_between(x[mask], 0, t[mask], color="steelblue", alpha=0.6)
         ax.plot(x[mask], t[mask], color="navy", lw=1)
         ax.set(xlabel="x [m]", ylabel="thickness [m]",
-               title=f"Circular Lens profile (f={self.f:.3g} m, R={self.R:.3g} m)")
+               title=f"{label} profile (f={self.f:.3g} m, R={self.R:.3g} m)")
         ax.set_xlim(-self.R, self.R)
         ax.axhline(0, color="black", lw=0.5)
         
         if savedir:
-            plt.savefig(os.path.join(savedir, f"{type(self).__name__}_profile_z={self.center[-1]}.png"))
+            if label is None: label = type(self).__name__
+            out = os.path.join(savedir, f"{label}_profile_z={self.center[-1]}.png")
+            fig.savefig(out)
+            print(f"Saved lens profile to {out}.")
         return ax
     
 class OpticalLens(CircularLens):
