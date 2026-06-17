@@ -64,7 +64,7 @@ class SingleSlit(Aperture):
             
         super().__init__(simulation, z)
             
-    def func(self, *args):
+    def func(self, *args, **kwargs):
         X = args[0]
         mask = np.abs(X) <= self.width/2
         field = np.zeros_like(X)
@@ -84,7 +84,7 @@ class CircularAperture(Aperture):
             
         super().__init__(simulation, z)
 
-    def func(self, *args):
+    def func(self, *args, **kwargs):
         X = args[0]
         Y = args[1]
         mask = np.sqrt(X**2 + Y**2) <= self.radius

@@ -85,14 +85,13 @@ class Object():
             x = np.linspace(-sim.Lx/2, sim.Lx/2, int(sim.Nx))
             y = np.linspace(-sim.Ly/2, sim.Ly/2, int(sim.Ny)) #type: ignore
             self.grid = np.meshgrid(x, y)
-        
+            
     def _build_field(self, **kwargs):
         z = self.center[-1]
         if self.simulation.dim == 1:
             self.field = self.func(self.grid, z=z,**kwargs)
-        else:
+        else: # dim == 2
             self.field = self.func(*self.grid, z=z,**kwargs)
-        self.field = self.field.astype(np.complex128)
 
     def func(self, *args, **kwargs):
         raise NotImplementedError("Distribution function has not been provided!")
@@ -190,18 +189,27 @@ class ThinLens(Aperture):
           
         super().__init__(simulation, z, func=aperture_func, **kwargs)
         self.aperture_field = self.field
+        
+        if self.simulation.dim == 1:
+            self.build_profile(self.grid, **kwargs)
+        else:
+            self.build_profile(*self.grid, **kwargs)
+        
         self._transmittance_initialized = False
              
     def __repr__(self):
         return f"Lens located at {self.center} with focal length {self.f}"
     
     def thickness(self, *args, **kwargs):
-        raise NotImplementedError
+        raise NotImplementedError("Lens must have a thickness profile!")
     
-    def transmittance(self, *args, **kwargs):
-        k = 2*const.pi/kwargs["wavelength"]
+    def build_profile(self, *args, **kwargs):
+        self.profile = self.aperture_field * self.thickness(*args, **kwargs)
+    
+    def transmittance(self, wavelength):
+        k = 2*const.pi/wavelength
         n = self.n
-        t = np.exp(1j*k*(n-1.)*self.thickness(*args, **kwargs))
+        t = np.exp(1j*k*(n-1.)*self.profile)
         return t
     
     ## implements lens phase screen          
@@ -209,22 +217,29 @@ class ThinLens(Aperture):
         assert(not self._transmittance_initialized)
         t_l = self.transmittance
         base = self.field.astype(np.complex128)
-        if self.simulation.dim == 1:
-            self.field = base * t_l(self.grid, wavelength=wave.wavelength, **self.kwargs)
-        else:
-            self.field = base * t_l(*self.grid, wavelength=wave.wavelength, **self.kwargs)
-        
+        self.field = base * t_l(wave.wavelength)
         self._transmittance_initialized = True
         
     def transform(self, wave: Waveform):
         if not self._transmittance_initialized:
             self.init_transmittance(wave)
             self._transmittance_initialized = True
-        wave.field *= self.field
+        
+        wave.field = wave.field.astype(np.complex128)*self.field
+        
+    def quantization(self, N: int):
+        '''
+        args 
+        - N: quantization steps
+        '''
+        
+        return
     
     def angle(self):
         field = np.where(self.field > 0, self.field, 0.)
         return np.angle(field)
         
-    def profile(self):
+    def plot_profile(self):
         raise NotImplementedError
+    
+    

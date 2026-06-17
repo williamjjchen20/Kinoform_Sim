@@ -27,7 +27,7 @@ def run_lens(label: str, lens_cls, simulation: SimulationObject, propagator, E: 
     else:
         source = GaussianBeam(energy=E, simulation=simulation, z=0, w0=w0)
 
-    lens = lens_cls(f=f, R=R, n=n, simulation=simulation, z=0)
+    lens = lens_cls(f=f, R=R, n=n, wavelength=source.wavelength, simulation=simulation, z=0)
     lens.init_transmittance(source)
 
     # Sampling check
@@ -99,6 +99,7 @@ def plot_comparison(lens_dict, savepath):
     cmap_cycle = plt.get_cmap("tab10")
 
     for i, (label, (wave, lens)) in enumerate(lens_dict.items()):
+        lens.plot_profile(ax=plt.figure().gca(), savedir=savedir, wavelength=wave.wavelength, label=label)
         Lx, Ly = wave.simulation.Lx, wave.simulation.Ly
         extent = [-Lx/2, Lx/2, -Ly/2, Ly/2]
         I = intensities[label]
@@ -116,7 +117,7 @@ def plot_comparison(lens_dict, savepath):
         ax[i, 2].plot(x, I[cy, :], color=cmap_cycle(i % 10))
         ax[i, 2].set(title=f"{label} Central Cut", xlabel="x [m]", ylabel="Intensity", yscale="log")
 
-    plt.savefig(savepath)
+    fig.savefig(savepath)
     plt.close(fig)
 
 def test_compare_xray_lenses(lens_dict):
