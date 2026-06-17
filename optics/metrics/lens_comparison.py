@@ -15,7 +15,7 @@ from .metrics import *
 script_dir = Path(__file__).resolve().parent
 savedir = (script_dir / "./results").resolve()
 
-def run_lens(lens_cls, label, simulation, propagator, E, f, R, n, w0=None):
+def run_lens(label: str, lens_cls, simulation: SimulationObject, propagator, E: float, f: float, R: float, n: float | complex, w0=None):
     '''
     Initializes a source, applies a lens of class `lens_cls`, propagates to
     the focal plane, and returns (incident_wave, focal_wave, lens).
@@ -77,52 +77,50 @@ def print_comparison(metrics_list):
     print("=" * len(header))
 
 
-def plot_comparison(parabolic, kinoform, savepath):
-    fig, ax = plt.subplots(nrows=2, ncols=3, figsize=(15, 9))
+def plot_comparison(lens_dict, savepath):
+    '''
+    Plot lens phase, focal-plane intensity (log), and central line cut for an
+    arbitrary set of lenses.
+
+    `lens_dict` maps label -> (focal_wave, lens). One row per lens, three
+    columns: phase, focal intensity, central cut.
+    '''
+    n_lenses = len(lens_dict)
+    if n_lenses == 0: raise Exception("No lenses added.")
+
+    fig, ax = plt.subplots(nrows=n_lenses, ncols=3, figsize=(15, 4.5 * n_lenses), squeeze=False)
     plt.subplots_adjust(wspace=0.35, hspace=0.35)
 
-    pf_wave, pf_lens = parabolic
-    kf_wave, kf_lens = kinoform
-
-    Lx, Ly = pf_wave.simulation.Lx, pf_wave.simulation.Ly
-    extent = [-Lx/2, Lx/2, -Ly/2, Ly/2]
-
-    # Lens phase
-    ax[0, 0].imshow(pf_lens.angle(), cmap="twilight", extent=extent)
-    ax[0, 0].set(title="Parabolic Lens Phase", xlabel="x [m]", ylabel="y [m]")
-    ax[1, 0].imshow(kf_lens.angle(), cmap="twilight", extent=extent)
-    ax[1, 0].set(title="Kinoform Phase", xlabel="x [m]", ylabel="y [m]")
-
-    # Focal-plane intensity (log scale)
-    I_pf = pf_wave.intensity()
-    I_kf = kf_wave.intensity()
-    vmax = max(I_pf.max(), I_kf.max())
+    intensities = {label: wave.intensity() for label, (wave, _) in lens_dict.items()}
+    vmax = max(I.max() for I in intensities.values())
     vmin = max(vmax * 1e-6, 1e-20)
     norm = colors.LogNorm(vmin=vmin, vmax=vmax)
 
-    im1 = ax[0, 1].imshow(I_pf, norm=norm, cmap="inferno", extent=extent)
-    ax[0, 1].set(title="Parabolic Focal Intensity", xlabel="x [m]", ylabel="y [m]")
-    fig.colorbar(im1, ax=ax[0, 1], fraction=0.046, pad=0.04)
+    cmap_cycle = plt.get_cmap("tab10")
 
-    im2 = ax[1, 1].imshow(I_kf, norm=norm, cmap="inferno", extent=extent)
-    ax[1, 1].set(title="Kinoform Focal Intensity", xlabel="x [m]", ylabel="y [m]")
-    fig.colorbar(im2, ax=ax[1, 1], fraction=0.046, pad=0.04)
+    for i, (label, (wave, lens)) in enumerate(lens_dict.items()):
+        Lx, Ly = wave.simulation.Lx, wave.simulation.Ly
+        extent = [-Lx/2, Lx/2, -Ly/2, Ly/2]
+        I = intensities[label]
 
-    # Central line cuts
-    Nx = I_pf.shape[1]
-    x = np.linspace(-Lx/2, Lx/2, Nx)
-    cy_pf = I_pf.shape[0] // 2
-    cy_kf = I_kf.shape[0] // 2
-    ax[0, 2].plot(x, I_pf[cy_pf, :], color="navy")
-    ax[0, 2].set(title="Parabolic Central Cut", xlabel="x [m]", ylabel="Intensity", yscale="log")
-    ax[1, 2].plot(x, I_kf[cy_kf, :], color="darkred")
-    ax[1, 2].set(title="Kinoform Central Cut", xlabel="x [m]", ylabel="Intensity", yscale="log")
+        ax[i, 0].imshow(lens.angle(), cmap="twilight", extent=extent)
+        ax[i, 0].set(title=f"{label} Lens Phase", xlabel="x [m]", ylabel="y [m]")
+
+        im = ax[i, 1].imshow(I, norm=norm, cmap="inferno", extent=extent)
+        ax[i, 1].set(title=f"{label} Focal Intensity", xlabel="x [m]", ylabel="y [m]")
+        fig.colorbar(im, ax=ax[i, 1], fraction=0.046, pad=0.04)
+
+        Nx = I.shape[1]
+        x = np.linspace(-Lx/2, Lx/2, Nx)
+        cy = I.shape[0] // 2
+        ax[i, 2].plot(x, I[cy, :], color=cmap_cycle(i % 10))
+        ax[i, 2].set(title=f"{label} Central Cut", xlabel="x [m]", ylabel="Intensity", yscale="log")
 
     plt.savefig(savepath)
     plt.close(fig)
 
-def test_compare_xray_lenses():
-    print("Comparing X-ray Parabolic Lens vs. Kinoform...")
+def test_compare_xray_lenses(lens_dict):
+    print("Comparing Lenses...")
 
     # Parameters
     N = 2048
@@ -137,61 +135,62 @@ def test_compare_xray_lenses():
 
     propagator = functools.partial(angular_spectrum_method, dim=2)
 
-    # --- Parabolic ---
-    sim_pf = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=N)
-
-    focal_pf, lens_pf, Pin_pf = run_lens(
-        XrayParabolicLens, "Parabolic", sim_pf, propagator, E, f, R, n
-    )
-
-    # --- Kinoform ---
-    sim_kf = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=N)
-
-    focal_kf, lens_kf, Pin_kf = run_lens(
-        Kinoform, "Kinoform", sim_kf, propagator, E, f, R, n
-    )
-
-    # Collect & print metrics
     metrics = []
-    m_pf = collect_metrics(focal_pf, Pin_pf, "Parabolic")
-    m_kf = collect_metrics(focal_kf, Pin_kf, "Kinoform")
-    metrics.append(m_pf)
-    metrics.append(m_kf)
+    results = {}
+    for name in lens_dict:
+        sim = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=N)
+        label = "".join([c for c in name if c.isalpha()])
+        cls, _ = lens_dict[name]
+        source, lens, P_in = run_lens(
+            label, cls, sim, propagator, E, f, R, n
+        )
+        m = collect_metrics(source, P_in, name)
+        metrics.append(m)
+        results[name] = (source, lens)
+
     print_comparison(metrics)
 
-    # Strehl-like ratio: peak intensity ratio (kinoform / parabolic)
-    print(f"\nPeak intensity ratio (Kinoform / Parabolic): {m_kf['I_max']/m_pf['I_max']:.4f}")
-    print(f"FWHM ratio (Kinoform / Parabolic):           {m_kf['FWHM [m]']/m_pf['FWHM [m]']:.4f}")
-    print(f"Efficiency ratio (Kinoform / Parabolic):     {m_kf['focusing_efficiency']/m_pf['focusing_efficiency']:.4f}")
-
-    # Comparison figure
-    out = os.path.join(savedir, "Metrics_Parabolic_vs_Kinoform.png")
-    plot_comparison((focal_pf, lens_pf), (focal_kf, lens_kf), out)
+    out = os.path.join(savedir, "Metrics_Lens_Comparison.png")
+    plot_comparison(results, out)
     print(f"Saved comparison figure to {out}")
 
 def take_user_input():
     done = False
-    lens_list = []
+    count = 1
+    lens_dict = dict()
     while not done:
-        print("Please input lens types to compare (Parabolic, Kinoform) or  when complete. ")
+        print("Please input lens types to compare (Parabolic, Kinoform). ")
         lens = input("Type of lens to add: ")
+        key = lens+str(count)
         
+        # Lens type
         match lens:
             case "Parabolic":
-                lens_list.append(XrayParabolicLens)
+                lens_dict[key] = [XrayParabolicLens]
             case "Kinoform":
-                lens_list.append(Kinoform)
+                lens_dict[key] = [Kinoform]
             case "":
                 done = True
+                continue
             case _:
                 raise Exception("Unknown lens type")
+            
+        # Quantization
+        print("="*50)
+        print("Please specify if lens should be quantized (skip if ideal)")
+        N = input("N-level Approximation: ") 
+        lens_dict[key].append(N)
         
+        # Complete
+        print("="*50)
+        count+=1
+        print(f"Added {lens} Lens!")
         
-        print(f"Added {lens}!")
-    return lens_list
+    return lens_dict
         
-    
+def main():
+    lenses = take_user_input()
+    test_compare_xray_lenses(lenses)
+
 if __name__ == "__main__":
-    lens_list = take_user_input()
-    print(lens_list)
-    # test_compare_xray_lenses()
+    main()
