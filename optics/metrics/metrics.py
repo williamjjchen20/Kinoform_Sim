@@ -86,7 +86,6 @@ def strehl_ratio(wave1: Waveform, wave2: Waveform):
     
     '''
     
-    I1 = wave1.intensity()
-    I2 = wave2.intensity()
+    I1 = np.max(wave1.intensity())
+    I2 = np.max(wave2.intensity())
     return I2/I1
-

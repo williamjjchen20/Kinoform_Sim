@@ -97,6 +97,9 @@ class Object():
     def func(self, *args, **kwargs):
         raise NotImplementedError("Distribution function has not been provided!")
     
+    def add_error(self, error_func):
+        self.error = error_func 
+    
     def view(self, ax=None, xlim=None, ylim=None, savedir="", cmap="Greys_r", color="Black", show_cbar=False, extend=False):
         if ax is None:
             fig, ax = plt.subplots()
@@ -234,12 +237,15 @@ class ThinLens(Aperture):
     def __repr__(self):
         return f"Lens located at {self.center} with focal length {self.f}"
     
+    ## lens profile
     def thickness(self, *args, **kwargs):
         raise NotImplementedError("Lens must have a thickness profile!")
     
     def build_profile(self, *args, **kwargs):
         self.profile = self.aperture_field * self.thickness(*args, **kwargs)
-    
+        self.orig_profile=self.profile
+        
+    ## transmittance features
     def transmittance(self, wavelength):
         k = 2*const.pi/wavelength
         n = self.n
@@ -261,6 +267,7 @@ class ThinLens(Aperture):
         
         wave.field = wave.field.astype(np.complex128)*self.field
         
+    ## errors and approximations
     def quantization(self, N: int):
         '''
         args 
@@ -269,6 +276,10 @@ class ThinLens(Aperture):
         
         return
     
+    def add_error(self, error_func, **kwargs):
+        self.profile = error_func(self, **kwargs)
+    
+    ## plotting
     def phase(self):
         field = np.where(self.field != 0, self.field, 0.)
         return np.angle(field)

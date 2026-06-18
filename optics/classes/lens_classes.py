@@ -100,3 +100,28 @@ class Kinoform(CircularLens):
             r_squared += Y**2
         t_parabolic = r_squared/(2*self.f*self.delta)
         return t_parabolic % t_2pi
+    
+class LensErrors():
+    '''
+    Takes in a lens of 'Lens' class and returns the lens profile including the error added (not mutable)
+    '''
+    
+    @staticmethod
+    def random_etch(lens: ThinLens, max_err: float, count:int | None = None, seed=None):
+        if seed is None: seed = 0
+        rng = np.random.default_rng(seed)
+        
+        errors = rng.uniform(low=-max_err, high=max_err, size=np.shape(lens.profile))
+        errors = errors * lens.aperture_field
+        if count is not None: 
+            num = lens.profile.size - count
+            if num < 0: raise Exception("Cannot go higher than resolution.")
+            indices = rng.choice(lens.profile.size, size=num, replace=False)
+            errors.flat[indices] = 0
+        
+        profile = lens.profile + errors
+        if np.all(lens.profile >= 0): profile[profile < 0] = 0
+        elif np.all(lens.profile <= 0): profile[profile > 0] = 0
+        else: pass
+        return profile
+    

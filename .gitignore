@@ -1,6 +1,5 @@
 notebook.ipynb
 test_figs/
-results/
 # classes/__pycache__/
 .gitignore
 

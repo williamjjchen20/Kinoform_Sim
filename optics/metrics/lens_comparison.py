@@ -12,7 +12,7 @@ from ..classes import *
 from .metrics import *
 
 script_dir = Path(__file__).resolve().parent
-savedir = (script_dir / "./results").resolve()
+savedir = (script_dir / "./test_figs").resolve()
 
 def run_lens(label: str, lens_cls, simulation: SimulationObject, propagator: Propagator, E: float, f: float, R: float, n: float | complex, w0=None):
     '''
@@ -155,7 +155,7 @@ def test_compare_xray_lenses(lens_dict, dim):
     print("Comparing Lenses...")
     
     # Parameters
-    N = 2048
+    N = 5000
     Lx = 1.5e-4
     Ly = 1.5e-4 if dim == 2 else None
     Lz = 10000
