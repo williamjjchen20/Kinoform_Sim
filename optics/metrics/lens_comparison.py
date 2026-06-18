@@ -89,7 +89,7 @@ def plot_comparison_1D(results, savepath):
 
     fig, ax = plt.subplots(
         nrows=n_lenses, ncols=2,
-        figsize=(17, 5.0 * n_lenses),
+        figsize=(8, 3.0 * n_lenses),
         squeeze=False,
         constrained_layout=True,
     )
@@ -101,19 +101,11 @@ def plot_comparison_1D(results, savepath):
         lens.plot_profile(ax=prof_ax, savedir=savedir, wavelength=wave.wavelength, label=label)
         plt.close(prof_fig)
         
-        lens_ax = lens.view(ax=ax[i, 0], cmap="twilight", show_cbar=True)
+        lens_ax = lens.view(ax=ax[i, 0], color=cmap_cycle(i%10))
         lens_ax.set(title=f"{label} Lens Phase")
 
-        wave_ax = wave.view(ax=ax[i, 1], cmap="inferno", extend=True, show_cbar=True)
+        wave_ax = wave.view(ax=ax[i, 1], color=cmap_cycle(i%10))
         wave_ax.set(title=f"{label} Focal Intensity")
-
-        I = wave.intensity()
-        Lx = wave.simulation.Lx
-        Nx = I.shape[1]
-        x = np.linspace(-Lx/2, Lx/2, Nx)
-        cy = I.shape[0] // 2
-        ax[i, 2].plot(x, I[cy, :], color=cmap_cycle(i % 10))
-        ax[i, 2].set(title=f"{label} Central Cut", xlabel="x [m]", ylabel="Intensity", yscale="log")
 
     fig.savefig(savepath)
     plt.close(fig)
@@ -216,7 +208,7 @@ def take_user_input():
             case "Kinoform":
                 lens_dict[key] = [Kinoform]
             case "":
-                continue
+                break
             case _:
                 raise Exception("Unknown lens type")
             
@@ -234,7 +226,7 @@ def take_user_input():
     return lens_dict
         
 def main():
-    dim = 1
+    dim = 2
     lenses = take_user_input()
     test_compare_xray_lenses(lenses, dim)
 

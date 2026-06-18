@@ -97,7 +97,7 @@ class Object():
     def func(self, *args, **kwargs):
         raise NotImplementedError("Distribution function has not been provided!")
     
-    def view(self, ax=None, xlim=None, ylim=None, savedir="", cmap="Greys_r", show_cbar=False, extend=False):
+    def view(self, ax=None, xlim=None, ylim=None, savedir="", cmap="Greys_r", color="Black", show_cbar=False, extend=False):
         if ax is None:
             fig, ax = plt.subplots()
         else:
@@ -105,9 +105,11 @@ class Object():
 
         if self.field is None: raise NotImplementedError
         
+        ## initialize specs based on which object is being plotted
         if isinstance(self, Waveform):
             data = self.intensity()
             label="Intensity"
+            scale="log"
             if extend:
                 phase = self.phase()
                 norm = colors.Normalize(vmin=phase.min(), vmax=phase.max())
@@ -119,11 +121,14 @@ class Object():
             data = self.phase()
             norm = colors.Normalize(vmin=data.min(), vmax=data.max())
             label = c_label = "Phase"
+            scale="linear"
         else:
             data = self.field
             norm = colors.Normalize(vmin=0., vmax=data.max())
             label = c_label = ""
-            
+            scale="linear"
+        
+        ## plotting treatments based on dimension specified
         if self.simulation.dim == 2:
             if not extend:
                 Lx, Ly = self.simulation.Lx, self.simulation.Ly
@@ -154,8 +159,8 @@ class Object():
                     cbar.set_label(c_label)
                 used_ax = ax3d
         else:
-            ax.plot(self.grid, data)
-            ax.set(xlabel="x [m]", ylabel=label, xlim=xlim, ylim=ylim)
+            ax.plot(self.grid, data, color=color)
+            ax.set(xlabel="x [m]", ylabel=label, yscale=scale, xlim=xlim, ylim=ylim)
             used_ax = ax
 
         if savedir:
