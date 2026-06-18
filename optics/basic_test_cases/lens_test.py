@@ -68,12 +68,13 @@ def test_lens_xray():
     
     source = ConstantBeam(energy=E, simulation=simulation, z=0)
     lens = XrayParabolicLens(f=f, R=R, n=n, simulation=simulation, z=0)   
-    lens.profile(source.wavelength, ax=plt.figure().gca(), savedir=str(savedir))
+    lens.plot_profile(source.wavelength, ax=plt.figure().gca(), savedir=str(savedir))
     
     fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(12, 4), squeeze=False, sharey=True) 
     
     lens.init_transmittance(source)
-    lens.view(ax=ax[0, 0], show_label=True)
+    print(lens.field)
+    lens.view(ax=ax[0, 0], show_cbar=True)
     source.view(ax=ax[0, 1])
     
     ## Voelz and Roggemann (2009) sampling criterion to avoid aliasing
@@ -88,7 +89,7 @@ def test_lens_xray():
     lens.transform(source)
     print("Post-Lens Max Intensity:", np.max(source.intensity()))
     source.propagate(z2, propagator)
-    source.view(ax=ax[0, 2], show_label=True)
+    source.view(ax=ax[0, 2], show_cbar=True)
     print("Final Max Intensity:", np.max(source.intensity()))
     
     ax[0,0].set(title=rf"Transmittance Phase(R={lens.R*1e6} $\mu m$, f={lens.f} m)")
@@ -115,12 +116,12 @@ def test_kinoform():
     propagator = functools.partial(angular_spectrum_method, dim=2)
     
     source = ConstantBeam(energy=E, simulation=simulation, z=0)
-    lens = Kinoform(f=f, R=R, n=n, simulation=simulation, z=0)    
-    lens.profile(source.wavelength, ax=plt.figure().gca(),savedir=str(savedir))
+    lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n, simulation=simulation, z=0)    
+    lens.plot_profile(source.wavelength, ax=plt.figure().gca(),savedir=str(savedir))
     
     fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(12, 4), squeeze=False, sharey=True)
     lens.init_transmittance(source)
-    lens.view(ax=ax[0, 0], show_label=True)
+    lens.view(ax=ax[0, 0], show_cbar=True)
     source.view(ax=ax[0, 1])
     
     ## Voelz and Roggemann (2009) sampling criterion to avoid aliasing
@@ -135,7 +136,7 @@ def test_kinoform():
     lens.transform(source)
     print("Post-Lens Max Intensity:", np.max(source.intensity()))
     source.propagate(z2, propagator)
-    source.view(ax=ax[0, 2], show_label=True)
+    source.view(ax=ax[0, 2], show_cbar=True)
     print("Final Max Intensity:", np.max(source.intensity()))
     
     ax[0,0].set(title=f"Transmittance Phase (R={lens.R*1000} mm, f={lens.f} m)")
@@ -144,7 +145,7 @@ def test_kinoform():
     plt.savefig(os.path.join(savedir, "Ideal_Kinoform"))
 
 if __name__ == "__main__":
-    test_standard_lens()
+    # test_standard_lens()
     test_lens_xray()
     test_kinoform()
     

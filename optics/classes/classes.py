@@ -5,6 +5,7 @@ import matplotlib.colors as colors
 import scipy.constants as const
 import functools, os
 
+# plt.style.use('_mpl-gallery')
 
 JOULE_TO_EV = 1/const.e
 __all__ = ["SimulationObject", "Waveform", "Aperture", "ThinLens"]
@@ -12,7 +13,7 @@ __all__ = ["SimulationObject", "Waveform", "Aperture", "ThinLens"]
 class SimulationObject:
     
     def __init__(self, Lx, Nx, Lz, Ly=None, Ny=None, n=1):
-        if Ly is None and Ny is None:
+        if Ly is None or Ny is None:
             self.dim = 1
         elif Ly is not None and Ny is not None:
             self.dim = 2
@@ -85,19 +86,18 @@ class Object():
             x = np.linspace(-sim.Lx/2, sim.Lx/2, int(sim.Nx))
             y = np.linspace(-sim.Ly/2, sim.Ly/2, int(sim.Ny)) #type: ignore
             self.grid = np.meshgrid(x, y)
-        
+            
     def _build_field(self, **kwargs):
         z = self.center[-1]
         if self.simulation.dim == 1:
             self.field = self.func(self.grid, z=z,**kwargs)
-        else:
+        else: # dim == 2
             self.field = self.func(*self.grid, z=z,**kwargs)
-        self.field = self.field.astype(np.complex128)
 
     def func(self, *args, **kwargs):
         raise NotImplementedError("Distribution function has not been provided!")
     
-    def view(self, ax=None, xlim=None, ylim=None, savedir="", cmap="Greys_r", show_label=False):
+    def view(self, ax=None, xlim=None, ylim=None, savedir="", cmap="Greys_r", color="Black", show_cbar=False, extend=False):
         if ax is None:
             fig, ax = plt.subplots()
         else:
@@ -105,40 +105,68 @@ class Object():
 
         if self.field is None: raise NotImplementedError
         
+        ## initialize specs based on which object is being plotted
         if isinstance(self, Waveform):
             data = self.intensity()
-            data = data/np.max(data)
-            norm = colors.LogNorm(vmin=1e-4, vmax=data.max())
-            label = " Normalized Intensity"
+            label="Intensity"
+            scale="log"
+            if extend:
+                phase = self.phase()
+                norm = colors.Normalize(vmin=phase.min(), vmax=phase.max())
+                c_label="Phase"
+            else:
+                norm = colors.LogNorm(vmin=1e-4, vmax=data.max())
+                c_label = label
         elif isinstance(self, ThinLens):
-            data = self.angle()
+            data = self.phase()
             norm = colors.Normalize(vmin=data.min(), vmax=data.max())
-            label= "Phase"
+            label = c_label = "Phase"
+            scale="linear"
         else:
             data = self.field
             norm = colors.Normalize(vmin=0., vmax=data.max())
-            label = ""
-            
+            label = c_label = ""
+            scale="linear"
+        
+        ## plotting treatments based on dimension specified
         if self.simulation.dim == 2:
-            Lx, Ly = self.simulation.Lx, self.simulation.Ly
-            im = ax.imshow(
-                data,
-                norm = norm,
-                cmap=cmap,
-                extent=[-Lx/2, Lx/2, -Ly/2, Ly/2], #type: ignore
-            )
-            if show_label:
-                cbar = fig.colorbar(im, ax=ax, orientation='vertical',
-                            fraction=0.03, pad=0.04, extend='max')
+            if not extend:
+                Lx, Ly = self.simulation.Lx, self.simulation.Ly
+                im = ax.imshow(
+                    data,
+                    norm = norm,
+                    cmap=cmap,
+                    extent=[-Lx/2, Lx/2, -Ly/2, Ly/2], #type: ignore
+                )
+                if show_cbar:
+                    cbar = fig.colorbar(im, ax=ax, orientation='vertical',
+                                fraction=0.046, pad=0.08)
 
-                cbar.set_label(label)
-            ax.set(xlabel="x [m]", ylabel="y [m]", xlim=xlim, ylim=ylim)
+                    cbar.set_label(c_label)
+                ax.set(xlabel="x [m]", ylabel="y [m]", xlim=xlim, ylim=ylim)
+                used_ax = ax
+            else:
+                ss = ax.get_subplotspec()
+                ax.remove()
+                ax3d = fig.add_subplot(ss, projection="3d")
+                ax3d.tick_params(axis='both', pad=2)
+                X, Y = self.grid
+                surf = ax3d.plot_surface(X, Y, data, norm=norm, cmap=cmap)
+                ax3d.set(xlabel="x [m]", ylabel="y [m]", zlabel=label)
+                if show_cbar:
+                    cbar = fig.colorbar(surf, ax=ax3d, orientation='vertical',
+                                shrink=0.7, pad=0.12)
+                    cbar.set_label(c_label)
+                used_ax = ax3d
         else:
-            ax.plot(self.grid, data)
-            ax.set(xlabel="x [m]", xlim=xlim)
+            ax.plot(self.grid, data, color=color)
+            ax.set(xlabel="x [m]", ylabel=label, yscale=scale, xlim=xlim, ylim=ylim)
+            used_ax = ax
 
         if savedir:
-            plt.savefig(os.path.join(savedir, f"{type(self).__name__}_z={self.center[-1]}.png"))
+            fig.savefig(os.path.join(savedir, f"{type(self).__name__}_z={self.center[-1]}.png"))
+
+        return used_ax
 
         
 class Waveform(Object):
@@ -164,6 +192,11 @@ class Waveform(Object):
     def intensity(self):
         I = np.abs(self.field)**2
         return I
+    
+    def phase(self):
+        field = np.where(self.field != 0, self.field, 0.)
+        return np.angle(field)
+
         
 class Aperture(Object):
     def __init__(self, simulation: SimulationObject, z, func=None, **kwargs):
@@ -190,19 +223,27 @@ class ThinLens(Aperture):
           
         super().__init__(simulation, z, func=aperture_func, **kwargs)
         self.aperture_field = self.field
-        self.profile = self.field
+        
+        if self.simulation.dim == 1:
+            self.build_profile(self.grid, **kwargs)
+        else:
+            self.build_profile(*self.grid, **kwargs)
+        
         self._transmittance_initialized = False
              
     def __repr__(self):
         return f"Lens located at {self.center} with focal length {self.f}"
     
     def thickness(self, *args, **kwargs):
-        raise NotImplementedError
+        raise NotImplementedError("Lens must have a thickness profile!")
     
-    def transmittance(self, *args, **kwargs):
-        k = 2*const.pi/kwargs["wavelength"]
+    def build_profile(self, *args, **kwargs):
+        self.profile = self.aperture_field * self.thickness(*args, **kwargs)
+    
+    def transmittance(self, wavelength):
+        k = 2*const.pi/wavelength
         n = self.n
-        t = np.exp(1j*k*(n-1.)*self.thickness(*args, **kwargs))
+        t = np.exp(1j*k*(n-1.)*self.profile)
         return t
     
     ## implements lens phase screen          
@@ -210,22 +251,29 @@ class ThinLens(Aperture):
         assert(not self._transmittance_initialized)
         t_l = self.transmittance
         base = self.field.astype(np.complex128)
-        if self.simulation.dim == 1:
-            self.field = base * t_l(self.grid, wavelength=wave.wavelength, **self.kwargs)
-        else:
-            self.field = base * t_l(*self.grid, wavelength=wave.wavelength, **self.kwargs)
-        
+        self.field = base * t_l(wave.wavelength)
         self._transmittance_initialized = True
         
     def transform(self, wave: Waveform):
         if not self._transmittance_initialized:
             self.init_transmittance(wave)
             self._transmittance_initialized = True
-        wave.field *= self.field
+        
+        wave.field = wave.field.astype(np.complex128)*self.field
+        
+    def quantization(self, N: int):
+        '''
+        args 
+        - N: quantization steps
+        '''
+        
+        return
     
-    def angle(self):
-        field = np.where(self.field > 0, self.field, 0.)
+    def phase(self):
+        field = np.where(self.field != 0, self.field, 0.)
         return np.angle(field)
         
     def plot_profile(self):
         raise NotImplementedError
+    
+    

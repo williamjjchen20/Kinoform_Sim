@@ -25,9 +25,10 @@ def test_slit_aperture_1D(width):
 
     plt.figure()
     plt.plot(aperture.grid, aperture.field) #type: ignore
-    plt.savefig(os.path.join("test_figs/", "Slit_Aperture_1D"))
+    plt.savefig(os.path.join(savedir, "Slit_Aperture_1D"))
 
     fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(12, 4), squeeze=False, sharey=True)
+    
     ax[0, 0].plot(wave.grid, wave.intensity(), color="Black")
     ax[0, 0].set(title="Initial Beam (z=0 m)")
 
@@ -38,6 +39,7 @@ def test_slit_aperture_1D(width):
     I = wave.intensity()
     norm = I.max()
     ax[0, 1].plot(wave.grid, I, color="Red", ls="--", label="Simulated", zorder=10)
+    # ax[0, 1].set(yscale="log")
 
     x = np.linspace(-Lx/2, Lx/2, N)
     U = A.single_slit_1D(x, z=z, wavelength=wave.wavelength, width=slit_width)
@@ -50,7 +52,7 @@ def test_slit_aperture_1D(width):
     err = np.abs(wave.intensity()-I)
     ax[0, 2].plot(err/I_th)
     ax[0, 2].set(title="Relative Error")
-    plt.savefig(os.path.join("test_figs/", "1D_Constant_Diffraction"))
+    plt.savefig(os.path.join(savedir, "1D_Constant_Diffraction"))
 
 
 def test_slit_aperture_2D(width, height):
@@ -68,7 +70,7 @@ def test_slit_aperture_2D(width, height):
     plt.imshow(aperture.field, cmap="gray", extent=[-Lx/2, Lx/2, -Ly/2, Ly/2]) #type: ignore
     plt.gca().set(xlim=(-width, width), ylim=(-height, height))
     plt.colorbar()
-    plt.savefig(os.path.join("test_figs/", "Slit_Aperture_2D"))
+    plt.savefig(os.path.join(savedir, "Slit_Aperture_2D"))
 
     fig, ax = plt.subplots(nrows=1, ncols=4, figsize=(16, 4), squeeze=False)
     plt.subplots_adjust(wspace=0.3)
@@ -97,7 +99,7 @@ def test_slit_aperture_2D(width, height):
     ax[0, 3].imshow(err/I_th, cmap="Greys_r", extent=[-Lx/2, Lx/2, -Ly/2, Ly/2])
     ax[0, 3].set(title="Relative Error", xlim=(-width, width), ylim=(-height, height))
     fig.colorbar(im, ax=ax, orientation='vertical', fraction=0.02, pad=0.04, label='Intensity')
-    plt.savefig(os.path.join("test_figs/", "2D_Constant_Diffraction"))
+    plt.savefig(os.path.join(savedir, "2D_Constant_Diffraction"))
 
 def test_circular_aperture(width, height):
     print("Testing Circular Aperture Diffraction...")
@@ -114,7 +116,7 @@ def test_circular_aperture(width, height):
     plt.imshow(aperture.field, cmap="gray", extent=[-Lx/2, Lx/2, -Ly/2, Ly/2]) #type: ignore
     plt.gca().set(xlim=(-width, width), ylim=(-height, height))
     plt.colorbar()
-    plt.savefig(os.path.join("test_figs/", "Circular_Aperture"))
+    plt.savefig(os.path.join(savedir, "Circular_Aperture"))
 
     fig, ax = plt.subplots(nrows=1, ncols=4, figsize=(16, 4), squeeze=False)
     plt.subplots_adjust(wspace=0.3)
@@ -146,7 +148,7 @@ def test_circular_aperture(width, height):
     ax[0, 3].imshow(err, cmap="Greys_r", extent=[-Lx/2, Lx/2, -Ly/2, Ly/2])
     ax[0, 3].set(title="Error", xlim=(-width, width), ylim=(-height, height))
     fig.colorbar(im, ax=ax, orientation='vertical', fraction=0.02, pad=0.04, label='Intensity')
-    plt.savefig(os.path.join("test_figs/", "Circular_Aperture_Diffraction"))
+    plt.savefig(os.path.join(savedir, "Circular_Aperture_Diffraction"))
     
 
 def test_gaussian(width, height):
@@ -175,7 +177,7 @@ def test_gaussian(width, height):
     ax[0, 1].set(title=f"Diffraction Pattern (z={z1+z2} m)", xlim=(-width, width), ylim=(-height, height))
 
     fig.colorbar(im, ax=ax, orientation='vertical', fraction=0.02, pad=0.04, label='Intensity')
-    plt.savefig(os.path.join("test_figs/", "2D_Gaussian_Diffraction"))
+    plt.savefig(os.path.join(savedir, "2D_Gaussian_Diffraction"))
 
 
 if __name__ == "__main__":

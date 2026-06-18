@@ -15,9 +15,9 @@ class CircularLens(ThinLens):
         
         F = ApertureFunctions()
         if simulation.dim == 2:
-            aperture_func = lambda X, Y, z=z, r=R: F.circular_mask(X, Y, r=r)
+            aperture_func = lambda X, Y, r=R, **kw: F.circular_mask(X, Y, r=r)
         else:
-            aperture_func = lambda X, r=R: F.single_slit_1D(X, r=r)
+            aperture_func = lambda X, r=R, **kw: F.single_slit_1D(X, r=r)
         super().__init__(f, aperture_func, simulation, z, thickness_func=None, n=n, **kwargs)
         
     def plot_profile(self, wavelength, ax=None, savedir="", label=None, y=0.0):
@@ -32,12 +32,12 @@ class CircularLens(ThinLens):
         
         if self.simulation.dim == 1:
             x = self.grid
-            t = self.thickness(x, wavelength=wavelength)
+            t = self.thickness(x)
         else:
             X, Y = self.grid
             x = X[0, :]
             y_row = np.full_like(x, y)
-            t = self.thickness(x, y_row, wavelength=wavelength)
+            t = self.thickness(x, y_row)
         
         mask = np.abs(x) <= self.R
         ax.fill_between(x[mask], 0, t[mask], color="steelblue", alpha=0.6)
@@ -74,7 +74,7 @@ class XrayParabolicLens(CircularLens):
     def __init__(self, f, R, n, simulation: SimulationObject, z, **kwargs):
         super().__init__(f, R, n, simulation, z,**kwargs)
         
-    def thickness(self, *args, wavelength, **kwargs):
+    def thickness(self, *args, **kwargs):
         X = args[0]
         r_squared = X**2
         if self.simulation.dim == 2:
@@ -86,24 +86,17 @@ class XrayParabolicLens(CircularLens):
         return t_parabolic
         
 class Kinoform(CircularLens):
-    def __init__(self, f, R, n, simulation: SimulationObject, z, **kwargs):
+    def __init__(self, wavelength, f, R, n, simulation: SimulationObject, z, **kwargs):
+        self.wavelength = wavelength
         super().__init__(f, R, n, simulation, z,**kwargs)
         
-    def thickness(self, *args, wavelength, **kwargs):
+    def thickness(self, *args, **kwargs):
         ## Note: Bandwidth limited by requiring wavelength for a specific energy of x-ray
         X = args[0]
         r_squared = X**2
-        t_2pi = wavelength/self.delta
+        t_2pi = self.wavelength/self.delta
         if self.simulation.dim == 2:
             Y = args[1]
             r_squared += Y**2
         t_parabolic = r_squared/(2*self.f*self.delta)
         return t_parabolic % t_2pi
-    
-    def quantization(self, N: int):
-        '''
-        args 
-        - N: quantization steps
-        '''
-        
-        return

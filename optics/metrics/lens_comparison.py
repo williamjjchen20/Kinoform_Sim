@@ -26,7 +26,7 @@ def run_lens(label: str, lens_cls, simulation: SimulationObject, propagator: Pro
     else:
         source = GaussianBeam(energy=E, simulation=simulation, z=0, w0=w0)
 
-    lens = lens_cls(f=f, R=R, n=n, simulation=simulation, z=0)
+    lens = lens_cls(f=f, R=R, n=n, wavelength=source.wavelength, simulation=simulation, z=0)
     lens.init_transmittance(source)
 
     # Sampling check
@@ -75,8 +75,7 @@ def print_comparison(metrics_list):
         print(row)
     print("=" * len(header))
 
-
-def plot_comparison(results, savepath):
+def plot_comparison_1D(results, savepath):
     '''
     Plot lens phase, focal-plane intensity (log), and central line cut for an
     arbitrary set of lenses.
@@ -87,29 +86,62 @@ def plot_comparison(results, savepath):
     n_lenses = len(results)
     if n_lenses == 0: raise Exception("No lenses added.")
 
-    fig, ax = plt.subplots(nrows=n_lenses, ncols=3, figsize=(15, 4.5 * n_lenses), squeeze=False)
-    plt.subplots_adjust(wspace=0.35, hspace=0.35)
-
-    intensities = {label: wave.intensity() for label, (wave, _) in results.items()}
-    vmax = max(I.max() for I in intensities.values())
-    vmin = max(vmax * 1e-6, 1e-20)
-    norm = colors.LogNorm(vmin=vmin, vmax=vmax)
+    fig, ax = plt.subplots(
+        nrows=n_lenses, ncols=2,
+        figsize=(8, 3.0 * n_lenses),
+        squeeze=False,
+        constrained_layout=True,
+    )
 
     cmap_cycle = plt.get_cmap("tab10")
 
     for i, (label, (wave, lens)) in enumerate(results.items()):
-        lens.plot_profile(ax=plt.figure().gca(), savedir=savedir, wavelength=wave.wavelength, label=label)
-        Lx, Ly = wave.simulation.Lx, wave.simulation.Ly
-        extent = [-Lx/2, Lx/2, -Ly/2, Ly/2]
-        I = intensities[label]
+        prof_fig, prof_ax = plt.subplots()
+        lens.plot_profile(ax=prof_ax, savedir=savedir, wavelength=wave.wavelength, label=label)
+        plt.close(prof_fig)
+        
+        lens_ax = lens.view(ax=ax[i, 0], color=cmap_cycle(i%10))
+        lens_ax.set(title=f"{label} Lens Phase")
 
-        ax[i, 0].imshow(lens.angle(), cmap="twilight", extent=extent)
-        ax[i, 0].set(title=f"{label} Lens Phase", xlabel="x [m]", ylabel="y [m]")
+        wave_ax = wave.view(ax=ax[i, 1], color=cmap_cycle(i%10))
+        wave_ax.set(title=f"{label} Focal Intensity")
 
-        im = ax[i, 1].imshow(I, norm=norm, cmap="inferno", extent=extent)
-        ax[i, 1].set(title=f"{label} Focal Intensity", xlabel="x [m]", ylabel="y [m]")
-        fig.colorbar(im, ax=ax[i, 1], fraction=0.046, pad=0.04)
+    fig.savefig(savepath)
+    plt.close(fig)
 
+def plot_comparison_2D(results, savepath):
+    '''
+    Plot lens phase, focal-plane intensity (log), and central line cut for an
+    arbitrary set of lenses.
+
+    `results` maps label -> (focal_wave, lens). One row per lens, three
+    columns: phase, focal intensity, central cut.
+    '''
+    n_lenses = len(results)
+    if n_lenses == 0: raise Exception("No lenses added.")
+
+    fig, ax = plt.subplots(
+        nrows=n_lenses, ncols=3,
+        figsize=(17, 5.0 * n_lenses),
+        squeeze=False,
+        constrained_layout=True,
+    )
+
+    cmap_cycle = plt.get_cmap("tab10")
+
+    for i, (label, (wave, lens)) in enumerate(results.items()):
+        prof_fig, prof_ax = plt.subplots()
+        lens.plot_profile(ax=prof_ax, savedir=savedir, wavelength=wave.wavelength, label=label)
+        plt.close(prof_fig)
+        
+        lens_ax = lens.view(ax=ax[i, 0], cmap="twilight", show_cbar=True)
+        lens_ax.set(title=f"{label} Lens Phase")
+
+        wave_ax = wave.view(ax=ax[i, 1], cmap="inferno", extend=True, show_cbar=True)
+        wave_ax.set(title=f"{label} Focal Intensity")
+
+        I = wave.intensity()
+        Lx = wave.simulation.Lx
         Nx = I.shape[1]
         x = np.linspace(-Lx/2, Lx/2, Nx)
         cy = I.shape[0] // 2
@@ -119,12 +151,13 @@ def plot_comparison(results, savepath):
     fig.savefig(savepath)
     plt.close(fig)
 
-def test_compare_xray_lenses(lens_dict, plot=False):
+def test_compare_xray_lenses(lens_dict, dim):
     print("Comparing Lenses...")
     
     # Parameters
-    N = 10000
-    Lx = Ly = 1.5e-4
+    N = 2048
+    Lx = 1.5e-4
+    Ly = 1.5e-4 if dim == 2 else None
     Lz = 10000
     E = 8.5e3       # eV
     f = 1.0         # m
@@ -149,11 +182,15 @@ def test_compare_xray_lenses(lens_dict, plot=False):
         results[name] = (source, lens)
 
     print_comparison(metrics)
-    
-    if plot:
-        out = os.path.join(savedir, "Metrics_Lens_Comparison.png")
-        plot_comparison(results, out)
-        print(f"Saved comparison figure to {out}")
+
+    if dim == 1:
+        out = os.path.join(savedir, "Metrics_Lens_Comparison_1D.png")
+        plot_comparison_1D(results, out)
+    else:
+        out = os.path.join(savedir, "Metrics_Lens_Comparison_3D.png")
+        plot_comparison_2D(results, out)
+        
+    print(f"Saved comparison figure to {out}")
 
 def take_user_input():
     count = 1
@@ -188,8 +225,9 @@ def take_user_input():
     return lens_dict
         
 def main():
+    dim = 2
     lenses = take_user_input()
-    test_compare_xray_lenses(lenses, plot=True)
+    test_compare_xray_lenses(lenses, dim)
 
 if __name__ == "__main__":
     main()
