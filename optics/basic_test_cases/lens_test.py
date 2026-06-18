@@ -73,7 +73,8 @@ def test_lens_xray():
     fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(12, 4), squeeze=False, sharey=True) 
     
     lens.init_transmittance(source)
-    lens.view(ax=ax[0, 0], show_label=True)
+    print(lens.field)
+    lens.view(ax=ax[0, 0], show_cbar=True)
     source.view(ax=ax[0, 1])
     
     ## Voelz and Roggemann (2009) sampling criterion to avoid aliasing
@@ -88,7 +89,7 @@ def test_lens_xray():
     lens.transform(source)
     print("Post-Lens Max Intensity:", np.max(source.intensity()))
     source.propagate(z2, propagator)
-    source.view(ax=ax[0, 2], show_label=True)
+    source.view(ax=ax[0, 2], show_cbar=True)
     print("Final Max Intensity:", np.max(source.intensity()))
     
     ax[0,0].set(title=rf"Transmittance Phase(R={lens.R*1e6} $\mu m$, f={lens.f} m)")
@@ -120,7 +121,7 @@ def test_kinoform():
     
     fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(12, 4), squeeze=False, sharey=True)
     lens.init_transmittance(source)
-    lens.view(ax=ax[0, 0], show_label=True)
+    lens.view(ax=ax[0, 0], show_cbar=True)
     source.view(ax=ax[0, 1])
     
     ## Voelz and Roggemann (2009) sampling criterion to avoid aliasing
@@ -135,7 +136,7 @@ def test_kinoform():
     lens.transform(source)
     print("Post-Lens Max Intensity:", np.max(source.intensity()))
     source.propagate(z2, propagator)
-    source.view(ax=ax[0, 2], show_label=True)
+    source.view(ax=ax[0, 2], show_cbar=True)
     print("Final Max Intensity:", np.max(source.intensity()))
     
     ax[0,0].set(title=f"Transmittance Phase (R={lens.R*1000} mm, f={lens.f} m)")

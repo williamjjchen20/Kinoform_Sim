@@ -5,6 +5,7 @@ import matplotlib.colors as colors
 import scipy.constants as const
 import functools, os
 
+# plt.style.use('_mpl-gallery')
 
 JOULE_TO_EV = 1/const.e
 __all__ = ["SimulationObject", "Waveform", "Aperture", "ThinLens"]
@@ -12,7 +13,7 @@ __all__ = ["SimulationObject", "Waveform", "Aperture", "ThinLens"]
 class SimulationObject:
     
     def __init__(self, Lx, Nx, Lz, Ly=None, Ny=None, n=1):
-        if Ly is None and Ny is None:
+        if Ly is None or Ny is None:
             self.dim = 1
         elif Ly is not None and Ny is not None:
             self.dim = 2
@@ -96,7 +97,7 @@ class Object():
     def func(self, *args, **kwargs):
         raise NotImplementedError("Distribution function has not been provided!")
     
-    def view(self, ax=None, xlim=None, ylim=None, savedir="", cmap="Greys_r", show_label=False):
+    def view(self, ax=None, xlim=None, ylim=None, savedir="", cmap="Greys_r", show_cbar=False, extend=False):
         if ax is None:
             fig, ax = plt.subplots()
         else:
@@ -106,38 +107,61 @@ class Object():
         
         if isinstance(self, Waveform):
             data = self.intensity()
-            data = data/np.max(data)
-            norm = colors.LogNorm(vmin=1e-4, vmax=data.max())
-            label = " Normalized Intensity"
+            label="Intensity"
+            if extend:
+                phase = self.phase()
+                norm = colors.Normalize(vmin=phase.min(), vmax=phase.max())
+                c_label="Phase"
+            else:
+                norm = colors.LogNorm(vmin=1e-4, vmax=data.max())
+                c_label = label
         elif isinstance(self, ThinLens):
-            data = self.angle()
+            data = self.phase()
             norm = colors.Normalize(vmin=data.min(), vmax=data.max())
-            label= "Phase"
+            label = c_label = "Phase"
         else:
             data = self.field
             norm = colors.Normalize(vmin=0., vmax=data.max())
-            label = ""
+            label = c_label = ""
             
         if self.simulation.dim == 2:
-            Lx, Ly = self.simulation.Lx, self.simulation.Ly
-            im = ax.imshow(
-                data,
-                norm = norm,
-                cmap=cmap,
-                extent=[-Lx/2, Lx/2, -Ly/2, Ly/2], #type: ignore
-            )
-            if show_label:
-                cbar = fig.colorbar(im, ax=ax, orientation='vertical',
-                            fraction=0.03, pad=0.04, extend='max')
+            if not extend:
+                Lx, Ly = self.simulation.Lx, self.simulation.Ly
+                im = ax.imshow(
+                    data,
+                    norm = norm,
+                    cmap=cmap,
+                    extent=[-Lx/2, Lx/2, -Ly/2, Ly/2], #type: ignore
+                )
+                if show_cbar:
+                    cbar = fig.colorbar(im, ax=ax, orientation='vertical',
+                                fraction=0.046, pad=0.08)
 
-                cbar.set_label(label)
-            ax.set(xlabel="x [m]", ylabel="y [m]", xlim=xlim, ylim=ylim)
+                    cbar.set_label(c_label)
+                ax.set(xlabel="x [m]", ylabel="y [m]", xlim=xlim, ylim=ylim)
+                used_ax = ax
+            else:
+                ss = ax.get_subplotspec()
+                ax.remove()
+                ax3d = fig.add_subplot(ss, projection="3d")
+                ax3d.tick_params(axis='both', pad=2)
+                X, Y = self.grid
+                surf = ax3d.plot_surface(X, Y, data, norm=norm, cmap=cmap)
+                ax3d.set(xlabel="x [m]", ylabel="y [m]", zlabel=label)
+                if show_cbar:
+                    cbar = fig.colorbar(surf, ax=ax3d, orientation='vertical',
+                                shrink=0.7, pad=0.12)
+                    cbar.set_label(c_label)
+                used_ax = ax3d
         else:
             ax.plot(self.grid, data)
-            ax.set(xlabel="x [m]", xlim=xlim)
+            ax.set(xlabel="x [m]", ylabel=label, xlim=xlim, ylim=ylim)
+            used_ax = ax
 
         if savedir:
-            plt.savefig(os.path.join(savedir, f"{type(self).__name__}_z={self.center[-1]}.png"))
+            fig.savefig(os.path.join(savedir, f"{type(self).__name__}_z={self.center[-1]}.png"))
+
+        return used_ax
 
         
 class Waveform(Object):
@@ -163,6 +187,11 @@ class Waveform(Object):
     def intensity(self):
         I = np.abs(self.field)**2
         return I
+    
+    def phase(self):
+        field = np.where(self.field != 0, self.field, 0.)
+        return np.angle(field)
+
         
 class Aperture(Object):
     def __init__(self, simulation: SimulationObject, z, func=None, **kwargs):
@@ -235,8 +264,8 @@ class ThinLens(Aperture):
         
         return
     
-    def angle(self):
-        field = np.where(self.field > 0, self.field, 0.)
+    def phase(self):
+        field = np.where(self.field != 0, self.field, 0.)
         return np.angle(field)
         
     def plot_profile(self):

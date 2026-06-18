@@ -28,6 +28,7 @@ def test_slit_aperture_1D(width):
     plt.savefig(os.path.join(savedir, "Slit_Aperture_1D"))
 
     fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(12, 4), squeeze=False, sharey=True)
+    
     ax[0, 0].plot(wave.grid, wave.intensity(), color="Black")
     ax[0, 0].set(title="Initial Beam (z=0 m)")
 
@@ -38,6 +39,7 @@ def test_slit_aperture_1D(width):
     I = wave.intensity()
     norm = I.max()
     ax[0, 1].plot(wave.grid, I, color="Red", ls="--", label="Simulated", zorder=10)
+    # ax[0, 1].set(yscale="log")
 
     x = np.linspace(-Lx/2, Lx/2, N)
     U = A.single_slit_1D(x, z=z, wavelength=wave.wavelength, width=slit_width)
