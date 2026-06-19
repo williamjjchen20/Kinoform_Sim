@@ -14,7 +14,12 @@ from .metrics import *
 script_dir = Path(__file__).resolve().parent
 savedir = (script_dir / "./test_figs").resolve()
 
-def run_lens(label: str, lens_cls, simulation: SimulationObject, propagator: Propagator, E: float, f: float, R: float, n: float | complex, w0=None):
+parser = argparse.ArgumentParser()
+parser.add_argument("-N", type=int, required=True)
+
+def run_lens(label: str, lens_cls, simulation: SimulationObject, propagator: Propagator, 
+             E: float, f: float, R: float, n: float | complex, 
+             err_func=None, w0=None):
     '''
     Initializes a source, applies a lens of class `lens_cls`, propagates to
     the focal plane, and returns (incident_wave, focal_wave, lens).
@@ -27,6 +32,8 @@ def run_lens(label: str, lens_cls, simulation: SimulationObject, propagator: Pro
         source = GaussianBeam(energy=E, simulation=simulation, z=0, w0=w0)
 
     lens = lens_cls(f=f, R=R, n=n, wavelength=source.wavelength, simulation=simulation, z=0)
+    if err_func is not None:
+        err = lens.add_error(err_func)
     lens.init_transmittance(source)
 
     # Sampling check
@@ -97,7 +104,7 @@ def plot_comparison_1D(results, savepath):
 
     for i, (label, (wave, lens)) in enumerate(results.items()):
         prof_fig, prof_ax = plt.subplots()
-        lens.plot_profile(ax=prof_ax, savedir=savedir, wavelength=wave.wavelength, label=label)
+        lens.plot_profile(ax=prof_ax, savedir=savedir, label=label)
         plt.close(prof_fig)
         
         lens_ax = lens.view(ax=ax[i, 0], color=cmap_cycle(i%10))
@@ -131,13 +138,13 @@ def plot_comparison_2D(results, savepath):
 
     for i, (label, (wave, lens)) in enumerate(results.items()):
         prof_fig, prof_ax = plt.subplots()
-        lens.plot_profile(ax=prof_ax, savedir=savedir, wavelength=wave.wavelength, label=label)
+        lens.plot_profile(ax=prof_ax, savedir=savedir, label=label)
         plt.close(prof_fig)
         
         lens_ax = lens.view(ax=ax[i, 0], cmap="twilight", show_cbar=True)
         lens_ax.set(title=f"{label} Lens Phase")
 
-        wave_ax = wave.view(ax=ax[i, 1], cmap="inferno", extend=True, show_cbar=True)
+        wave_ax = wave.view(ax=ax[i, 1], cmap="inferno", xlim=(-lens.R/2, lens.R/2), ylim=(-lens.R/2, lens.R/2), extend=True, show_cbar=True)
         wave_ax.set(title=f"{label} Focal Intensity")
 
         I = wave.intensity()
@@ -146,16 +153,17 @@ def plot_comparison_2D(results, savepath):
         x = np.linspace(-Lx/2, Lx/2, Nx)
         cy = I.shape[0] // 2
         ax[i, 2].plot(x, I[cy, :], color=cmap_cycle(i % 10))
+        ax[i, 2].set(xlim=(-lens.R/2, lens.R/2))
         ax[i, 2].set(title=f"{label} Central Cut", xlabel="x [m]", ylabel="Intensity", yscale="log")
 
     fig.savefig(savepath)
     plt.close(fig)
 
-def test_compare_xray_lenses(lens_dict, dim):
+def test_compare_xray_lenses(lens_dict, N, dim):
     print("Comparing Lenses...")
     
     # Parameters
-    N = 5000
+    N = N
     Lx = 1.5e-4
     Ly = 1.5e-4 if dim == 2 else None
     Lz = 10000
@@ -173,9 +181,10 @@ def test_compare_xray_lenses(lens_dict, dim):
     for name in lens_dict:
         sim = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=N)
         label = "".join([c for c in name if c.isalpha()])
-        cls, _ = lens_dict[name]
+        cls, n_quantized, err_func = lens_dict[name]
         source, lens, P_in = run_lens(
-            label, cls, sim, propagator, E, f, R, n
+            label, cls, sim, propagator, E, f, R, n,
+            err_func=err_func
         )
         m = collect_metrics(source, P_in, name)
         metrics.append(m)
@@ -193,12 +202,12 @@ def test_compare_xray_lenses(lens_dict, dim):
     print(f"Saved comparison figure to {out}")
 
 def take_user_input():
-    count = 1
+    iter_count = 1
     lens_dict = dict()
-    while count < 5:
+    while iter_count < 5:
         print("Please input lens types to compare (Parabolic, Kinoform). ")
         lens = input("Type of lens to add: ")
-        key = lens+str(count)
+        key = lens+str(iter_count)
         
         # Lens type
         match lens:
@@ -217,17 +226,42 @@ def take_user_input():
         N = input("N-level Approximation: ") 
         lens_dict[key].append(N)
         
+        # Error
+        print("="*50)
+        print("Please specify if error should be added (skip if ideal)")
+        err_type = input("Error Type: ")
+        match err_type:
+            case "Periodic Etch":
+                err = float(input("Error: "))
+                interval=int(input("Interval: "))
+                err_func= LensErrors.periodic_etch
+                lens_dict[key].append(functools.partial(err_func, err=err, interval=interval))
+            case "Random Etch":
+                err = float(input("Max Error: "))
+                interval=int(input("Interval: "))
+                err_func = LensErrors.random_etch
+                lens_dict[key].append(functools.partial(err_func, max_err=err, interval=interval))
+            case "":
+                lens_dict[key].append(None)
+            case _:
+                raise Exception("Unknown error type")
+        
         # Complete
         print("="*50)
-        count+=1
         print(f"Added {lens} Lens!")
+        print("Lens Count: ", iter_count)
+        iter_count+=1
+        print("#"*50)
         
     return lens_dict
         
 def main():
+    args = parser.parse_args()
     dim = 2
+    N = 1024
     lenses = take_user_input()
-    test_compare_xray_lenses(lenses, dim)
+    print(lenses)
+    test_compare_xray_lenses(lenses, N, dim)
 
 if __name__ == "__main__":
     main()

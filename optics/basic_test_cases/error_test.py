@@ -25,7 +25,7 @@ def test_kinoform_etch(err):
     lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n,
                     simulation=simulation, z=0)
 
-    lens.add_error(LensErrors.etch, err=err, count=100)
+    lens.add_error(LensErrors.periodic_etch, err=err, count=N//10)
 
     fig, ax = plt.subplots(figsize=(8, 4))
     x = lens.grid
@@ -59,7 +59,7 @@ def test_kinoform_random_etch(max_err):
     lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n,
                     simulation=simulation, z=0)
 
-    lens.add_error(LensErrors.random_etch, max_err=max_err, count=100, seed=67)
+    lens.add_error(LensErrors.random_etch, max_err=max_err, count=N//10, seed=67)
 
     fig, ax = plt.subplots(figsize=(8, 4))
     x = lens.grid

@@ -20,25 +20,25 @@ class CircularLens(ThinLens):
             aperture_func = lambda X, r=R, **kw: F.single_slit_1D(X, r=r)
         super().__init__(f, aperture_func, simulation, z, thickness_func=None, n=n, **kwargs)
         
-    def plot_profile(self, wavelength, ax=None, savedir="", label=None, y=0.0):
+    def plot_profile(self, ax=None, savedir="", label=None, y=0.0):
         '''
-        Plot the side profile (thickness vs. x) of the kinoform.
-        For 2D simulations, takes a slice at y = `y`.
+        Plot the side profile (thickness vs. x) of the lens from
+        `self.profile`. For 2D simulations, takes the central row.
         '''
         if ax is None:
             fig, ax = plt.subplots()
         else:
             fig = ax.get_figure()
-        
+
         if self.simulation.dim == 1:
             x = self.grid
-            t = self.thickness(x)
+            t = self.profile
         else:
-            X, Y = self.grid
+            X, _ = self.grid
             x = X[0, :]
-            y_row = np.full_like(x, y)
-            t = self.thickness(x, y_row)
-        
+            cy = self.profile.shape[0] // 2
+            t = self.profile[cy, :]
+
         mask = np.abs(x) <= self.R
         ax.fill_between(x[mask], 0, t[mask], color="steelblue", alpha=0.6)
         ax.plot(x[mask], t[mask], color="navy", lw=1)
@@ -107,12 +107,12 @@ class LensErrors():
     Returns updated lens profile and the errors
     '''
     @staticmethod
-    def etch(lens: ThinLens, err: float, count: int = 0):
+    def periodic_etch(lens: ThinLens, err: float, interval: int = 1):
         errors = np.zeros_like(lens.profile)
         aperture_mask = lens.aperture_field > 0
         aperture_idx = np.flatnonzero(aperture_mask.ravel())
         
-        interval = len(aperture_idx)//count if count != 0 else 1
+        # interval = len(aperture_idx)//count if count != 0 else 1
         etched_idx = aperture_idx[::interval]
         errors.flat[etched_idx] = err
        
@@ -125,14 +125,17 @@ class LensErrors():
         return profile , errors
     
     @staticmethod
-    def random_etch(lens: ThinLens, max_err: float, count: int = 0, seed=None):
+    def random_etch(lens: ThinLens, max_err: float, interval: int = 0, seed=None):
         if seed is None: seed = 0
         rng = np.random.default_rng(seed)
         
         errors = np.zeros_like(lens.profile)
+        aperture_mask = lens.aperture_field > 0
+        aperture_idx = np.flatnonzero(aperture_mask.ravel())
         random_vals = rng.uniform(low=-max_err, high=max_err, size=lens.profile.size)
         
-        etched_idx = rng.choice(lens.profile.size, size=count, replace=False)
+        count = len(aperture_idx)//interval
+        etched_idx = rng.choice(aperture_idx, size=count, replace=False)
         vals = random_vals[etched_idx]
         errors.flat[etched_idx] = vals
         
@@ -143,4 +146,3 @@ class LensErrors():
         elif np.all(lens.profile <= 0): profile[profile > 0] = 0
         else: pass
         return profile, errors
-    

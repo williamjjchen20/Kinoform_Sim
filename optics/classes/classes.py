@@ -153,14 +153,28 @@ class Object():
                 ax.remove()
                 ax3d = fig.add_subplot(ss, projection="3d")
                 ax3d.tick_params(axis='both', pad=2)
+                
                 X, Y = self.grid
-                surf = ax3d.plot_surface(X, Y, data, norm=norm, cmap=cmap)
-                ax3d.set(xlabel="x [m]", ylabel="y [m]", zlabel=label)
+                mask_x = np.ones(X.shape[1], dtype=bool) if xlim is None \
+                    else (X[0, :] >= xlim[0]) & (X[0, :] <= xlim[1])
+                mask_y = np.ones(Y.shape[0], dtype=bool) if ylim is None \
+                    else (Y[:, 0] >= ylim[0]) & (Y[:, 0] <= ylim[1])
+                idx = np.ix_(mask_y, mask_x)
+                Xc, Yc, Dc = X[idx], Y[idx], data[idx]
+
+                surf = ax3d.plot_surface(Xc, Yc, Dc, norm=norm, cmap=cmap)
+                
                 if show_cbar:
                     cbar = fig.colorbar(surf, ax=ax3d, orientation='vertical',
                                 shrink=0.7, pad=0.12)
                     cbar.set_label(c_label)
+                
+                if xlim is not None: ax3d.set_xlim3d(*xlim)
+                if ylim is not None: ax3d.set_ylim3d(*ylim)
+                ax3d.set_box_aspect((1, 1, 0.6))
+                ax3d.set(xlabel="x [m]", ylabel="y [m]", zlabel=label)
                 used_ax = ax3d
+  
         else:
             ax.plot(self.grid, data, color=color)
             ax.set(xlabel="x [m]", ylabel=label, yscale=scale, xlim=xlim, ylim=ylim)
@@ -277,8 +291,10 @@ class ThinLens(Aperture):
         return
     
     def add_error(self, error_func, **kwargs):
-        self.profile = error_func(self, **kwargs)
-    
+        profile, err = error_func(self, **kwargs)
+        self.profile = profile
+        return err
+        
     ## plotting
     def phase(self):
         field = np.where(self.field != 0, self.field, 0.)
