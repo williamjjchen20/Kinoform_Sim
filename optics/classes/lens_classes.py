@@ -105,6 +105,23 @@ class LensErrors():
     '''
     Takes in a lens of 'Lens' class and returns the lens profile including the error added (not mutable)
     '''
+    @staticmethod
+    def etch(lens: ThinLens, err: float, count: int | None = None, seed=None):
+        if seed is None: seed = 0
+        errors = np.ones_like(lens.profile)*err
+        errors = errors * lens.aperture_field
+        if count is not None:
+            N = lens.profile.size//count
+            mask = np.arange(0, lens.profile.size, N)
+            errors.flat[mask] = 0
+
+        profile = lens.profile + errors
+        
+        # prevents errors from breaking plano surface
+        if np.all(lens.profile >= 0): profile[profile < 0] = 0
+        elif np.all(lens.profile <= 0): profile[profile > 0] = 0
+        else: pass
+        return profile 
     
     @staticmethod
     def random_etch(lens: ThinLens, max_err: float, count:int | None = None, seed=None):
@@ -120,6 +137,8 @@ class LensErrors():
             errors.flat[indices] = 0
         
         profile = lens.profile + errors
+        
+        # prevents errors from breaking plano surface
         if np.all(lens.profile >= 0): profile[profile < 0] = 0
         elif np.all(lens.profile <= 0): profile[profile > 0] = 0
         else: pass
