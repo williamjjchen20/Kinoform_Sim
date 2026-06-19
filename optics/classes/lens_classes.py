@@ -104,37 +104,37 @@ class Kinoform(CircularLens):
 class LensErrors():
     '''
     Takes in a lens of 'Lens' class and returns the lens profile including the error added (not mutable)
+    Returns updated lens profile and the errors
     '''
     @staticmethod
-    def etch(lens: ThinLens, err: float, count: int | None = None, seed=None):
-        if seed is None: seed = 0
-        errors = np.ones_like(lens.profile)*err
-        errors = errors * lens.aperture_field
-        if count is not None:
-            N = lens.profile.size//count
-            mask = np.arange(0, lens.profile.size, N)
-            errors.flat[mask] = 0
-
+    def etch(lens: ThinLens, err: float, count: int = 0):
+        errors = np.zeros_like(lens.profile)
+        aperture_mask = lens.aperture_field > 0
+        aperture_idx = np.flatnonzero(aperture_mask.ravel())
+        
+        interval = len(aperture_idx)//count if count != 0 else 1
+        etched_idx = aperture_idx[::interval]
+        errors.flat[etched_idx] = err
+       
         profile = lens.profile + errors
         
         # prevents errors from breaking plano surface
         if np.all(lens.profile >= 0): profile[profile < 0] = 0
         elif np.all(lens.profile <= 0): profile[profile > 0] = 0
         else: pass
-        return profile 
+        return profile , errors
     
     @staticmethod
-    def random_etch(lens: ThinLens, max_err: float, count:int | None = None, seed=None):
+    def random_etch(lens: ThinLens, max_err: float, count: int = 0, seed=None):
         if seed is None: seed = 0
         rng = np.random.default_rng(seed)
         
-        errors = rng.uniform(low=-max_err, high=max_err, size=np.shape(lens.profile))
-        errors = errors * lens.aperture_field
-        if count is not None: 
-            num = lens.profile.size - count
-            if num < 0: raise Exception("Cannot go higher than resolution.")
-            indices = rng.choice(lens.profile.size, size=num, replace=False)
-            errors.flat[indices] = 0
+        errors = np.zeros_like(lens.profile)
+        random_vals = rng.uniform(low=-max_err, high=max_err, size=lens.profile.size)
+        
+        etched_idx = rng.choice(lens.profile.size, size=count, replace=False)
+        vals = random_vals[etched_idx]
+        errors.flat[etched_idx] = vals
         
         profile = lens.profile + errors
         
@@ -142,5 +142,5 @@ class LensErrors():
         if np.all(lens.profile >= 0): profile[profile < 0] = 0
         elif np.all(lens.profile <= 0): profile[profile > 0] = 0
         else: pass
-        return profile
+        return profile, errors
     
