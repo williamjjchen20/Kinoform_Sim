@@ -7,6 +7,7 @@ from pathlib import Path
 
 from ..propagators import *
 from ..classes import *
+from ..metrics import *
 
 script_dir = Path(__file__).resolve().parent
 savedir = (script_dir / "../test_figs/lens_test").resolve()
@@ -68,19 +69,16 @@ def test_lens_xray():
     
     source = ConstantBeam(energy=E, simulation=simulation, z=0)
     lens = XrayParabolicLens(f=f, R=R, n=n, simulation=simulation, z=0)   
-    lens.plot_profile(source.wavelength, ax=plt.figure().gca(), savedir=str(savedir))
+    lens.plot_profile(ax=plt.figure().gca(), savedir=str(savedir))
     
     fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(12, 4), squeeze=False, sharey=True) 
     
     lens.init_transmittance(source)
-    print(lens.field)
     lens.view(ax=ax[0, 0], show_cbar=True)
     source.view(ax=ax[0, 1])
     
     ## Voelz and Roggemann (2009) sampling criterion to avoid aliasing
     f_s = source.wavelength*np.abs(lens.f)/(2*lens.R) 
-    # print("Nyquist Sampling Rate:", f_s)
-    # print("Required (Nx, Ny):", Lx/f_s, Ly/f_s)
     assert(Lx/N < f_s and Ly/N < f_s)
     
     z1, z2 = lens.center[-1], lens.f
@@ -117,7 +115,7 @@ def test_kinoform():
     
     source = ConstantBeam(energy=E, simulation=simulation, z=0)
     lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n, simulation=simulation, z=0)    
-    lens.plot_profile(source.wavelength, ax=plt.figure().gca(),savedir=str(savedir))
+    lens.plot_profile(ax=plt.figure().gca(),savedir=str(savedir))
     
     fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(12, 4), squeeze=False, sharey=True)
     lens.init_transmittance(source)
@@ -126,8 +124,6 @@ def test_kinoform():
     
     ## Voelz and Roggemann (2009) sampling criterion to avoid aliasing
     f_s = source.wavelength*np.abs(lens.f)/(2*lens.R) 
-    # print("Nyquist Sampling Rate:", f_s)
-    # print("Required (Nx, Ny):", Lx/f_s, Ly/f_s)
     assert(Lx/N < f_s and Ly/N < f_s)
     
     z1, z2 = lens.center[-1], lens.f
@@ -146,6 +142,6 @@ def test_kinoform():
 
 if __name__ == "__main__":
     # test_standard_lens()
-    test_lens_xray()
+    # test_lens_xray()
     test_kinoform()
     

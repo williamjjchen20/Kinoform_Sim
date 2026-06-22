@@ -1,11 +1,10 @@
 import numpy as np
 import scipy.constants as const
 import matplotlib.pyplot as plt
-import matplotlib.colors as colors
+import matplotlib.colors as mcolors
 import xraylib as xrl
-import os, functools, inspect, copy
+import os, functools, inspect
 from pathlib import Path
-import argparse
 
 from ..propagators import *
 from ..classes import *
@@ -14,7 +13,7 @@ from .metrics import *
 script_dir = Path(__file__).resolve().parent
 savedir = (script_dir / "./results").resolve()
 savedir.mkdir(parents=True, exist_ok=True)
-
+    
 
 def _error_magnitude_param(error_func):
     '''
@@ -28,13 +27,13 @@ def _error_magnitude_param(error_func):
 
 
 def etch_error_vs_intensity(source_factory, lens_factory, propagator, error_func,
-                            err_values, error_kwargs=None, savepath=None):
+                            err_values, labels=None, E_range = None, error_kwargs=None, savepath=None):
     '''
     Sweep an etch error magnitude and record focal-plane intensity stats.
 
     args
     - source_factory: callable() -> fresh Waveform (with its own SimulationObject)
-    - lens_factory:   callable(source) -> fresh ThinLens bound to that source
+    - lens_factory:   callable(source, wavelength) -> fresh ThinLens bound to that source
     - propagator:     propagation function passed to wave.propagate
     - error_func:     staticmethod from LensErrors (e.g. LensErrors.random_etch)
     - err_values:     iterable of magnitudes to sweep over
@@ -53,96 +52,138 @@ def etch_error_vs_intensity(source_factory, lens_factory, propagator, error_func
     ref_lens.init_transmittance(ref_source)
     ref_lens.transform(ref_source)
     ref_source.propagate(ref_lens.f, propagator)
-    I_max_ref = float(np.max(ref_source.intensity()))
 
-    I_max = np.zeros_like(err_values)
-    I_avg = np.zeros_like(err_values)
-    P_foc = np.zeros_like(err_values)
-    fwhm  = np.zeros_like(err_values)
-    strehl = np.zeros_like(err_values)
+    results = []
+    if E_range is None: E_range = [ref_source.energy]
 
-    for i, e in enumerate(err_values):
-        source = source_factory()
-        lens = lens_factory(source)
-        lens.add_error(error_func, **{mag_name: float(e)}, **error_kwargs)
-        lens.init_transmittance(source)
-        lens.transform(source)
-        source.propagate(lens.f, propagator)
+    for E_off in E_range:
+        print("="*50)
+        print("E [eV]:", E_off)
+        P_eff = np.zeros_like(err_values)
+        fwhm  = np.zeros_like(err_values)
+        strehl = np.zeros_like(err_values)
 
-        Imax, Iavg = intensity_stats(source)
-        I_max[i] = Imax
-        I_avg[i] = Iavg
-        P_foc[i] = total_power(source)
-        try:
-            fwhm[i] = FWHM(source)
-        except Exception:
-            fwhm[i] = np.nan
-        strehl[i] = Imax / I_max_ref if I_max_ref > 0 else np.nan
+        for i, e in enumerate(err_values):
+            source = source_factory(E=E_off)
+            ## create reference source lens for comparison
+            lens = lens_factory(source, wavelength=ref_source.wavelength)
+            source.filter(lens)
+            source_in = source
+            
+            lens.add_error(error_func, **{mag_name: float(e)}, **error_kwargs)
+            lens.init_transmittance(source)
+            lens.transform(source)
+            source.propagate(lens.f, propagator)
 
-        print(f"[{i+1}/{len(err_values)}] {mag_name}={e:.3e}  "
-              f"I_max={Imax:.3e}  Strehl={strehl[i]:.3f}  "
-              f"FWHM={fwhm[i]:.3e}  P_focal={P_foc[i]:.3e}")
+            Imax, _ = intensity_stats(source)
+            P_eff[i] = focal_efficiency(wave_in=source, wave_out=source_in, radius=1.22*source.wavelength*lens.f/(2*lens.R))
+            try:
+                fwhm[i] = FWHM(source)
+            except Exception:
+                fwhm[i] = np.nan
+            strehl[i] = strehl_ratio(ref_source, source)
+
+            print(f"[{i+1}/{len(err_values)}] {mag_name}={e:.3e}  "
+                f"I_max={Imax:.3e}  Strehl={strehl[i]:.3f}  "
+                f"FWHM={fwhm[i]:.3e}  P_eff={P_eff[i]:.3e}")
+
+        result = [P_eff, fwhm, strehl]
+        results.append(result)
 
     if savepath is not None:
-        _plot_sweep(err_values, I_max, P_foc, fwhm, strehl, mag_name,
-                    error_func.__name__, savepath)
+        if labels is None:
+            labels = {}
+        plot_sweep(err_values, results, labels, savepath)
 
-    return {
-        "err": err_values,
-        "I_max": I_max,
-        "I_avg": I_avg,
-        "P_focal": P_foc,
-        "fwhm": fwhm,
-        "strehl": strehl,
-    }
+    return results
+    
+def plot_sweep(err, vals, labels, savepath):
+    if not isinstance(vals, list): vals = [vals]
+    assert isinstance(vals, list)
+    n_metrics = len(vals[0])
+    n_series  = len(vals)
 
+    fig, ax = plt.subplots(1, n_metrics, figsize=(4.5*n_metrics, 4), constrained_layout=True, squeeze=False)
+    ax = ax[0]
+    fig.suptitle(labels.get("title", ""))
 
-def _plot_sweep(err, I_max, P_foc, fwhm, strehl, mag_name, error_name, savepath):
-    fig, ax = plt.subplots(2, 2, figsize=(12, 8), constrained_layout=True)
-    fig.suptitle(f"{error_name}: focal-plane response vs {mag_name}")
+    # per-axis labels / scales (length n_metrics)
+    xlabel  = labels.get("xlabel",  [""] * n_metrics)
+    ylabel  = labels.get("ylabel",  [""] * n_metrics)
+    xscale  = labels.get("xscale",  ["linear"] * n_metrics)
+    yscale  = labels.get("yscale",  ["linear"] * n_metrics)
+    # multiplicative factors applied before plotting (length n_metrics)
+    x_scale_factor  = labels.get("x_scale_factor",  1.0)
+    y_scale_factor = labels.get("y_scale_factor", [1.0] * n_metrics)
 
-    ax[0, 0].plot(err, I_max, marker="o", color="navy")
-    ax[0, 0].set(xlabel=mag_name, ylabel="I_max", yscale="log")
+    # per-series style (length n_series)
+    label   = labels.get("label",   [""]   * n_series)
+    marker  = labels.get("marker",  ["o"]  * n_series)
+    color   = labels.get("color",   [None] * n_series)
 
-    ax[0, 1].plot(err, strehl, marker="o", color="darkred")
-    ax[0, 1].set(xlabel=mag_name, ylabel="Strehl (I_max / I_max_ref)")
-    ax[0, 1].axhline(1.0, color="black", lw=0.5, ls="--")
+    err_plot = np.asarray(err) * x_scale_factor
 
-    ax[1, 0].plot(err, fwhm, marker="o", color="darkgreen")
-    ax[1, 0].set(xlabel=mag_name, ylabel="FWHM [m]")
+    for i, val in enumerate(vals):
+        for j, metric in enumerate(val):
+            ax[j].plot(err_plot, np.asarray(metric) * y_scale_factor[j],
+                       color=color[i], marker=marker[i], label=label[i])
+            ax[j].set(xlabel=xlabel[j], ylabel=ylabel[j],
+                      xscale=xscale[j], yscale=yscale[j])
 
-    ax[1, 1].plot(err, P_foc, marker="o", color="purple")
-    ax[1, 1].set(xlabel=mag_name, ylabel="Focal-plane power")
+    if any(lbl for lbl in label):
+        ax[-1].legend()
 
     fig.savefig(savepath)
     plt.close(fig)
     print(f"Saved sweep figure to {savepath}.")
 
-
-def _demo():
+def main():
     Lx, Lz, N = 1.5e-4, 10000, 2048
+    # SIM = {"Lx": Lx, "Ly": Lx, "Nx": N, "Ny": N, "Lz": Lz}
     E, f, R = 8.5e3, 1.0, 5e-5
     dim = 2
+    
     n = xrl.Refractive_Index("Si", E / 1000, 2.329)
     propagator = functools.partial(angular_spectrum_method, dim=dim)
 
-    def source_factory():
-        sim = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Lx, Ny=N)
+    def source_factory(E=E) -> Waveform:
+        if dim == 1:
+            sim = SimulationObject(Lx=Lx, Lz=Lz, Nx=N)
+        else:
+            sim = SimulationObject(Lx=Lx, Ly=Lx, Lz=Lz, Nx=N, Ny=N)
         return ConstantBeam(energy=E, simulation=sim, z=0)
-
-    def lens_factory(src):
-        return Kinoform(wavelength=src.wavelength, f=f, R=R, n=n,
+    
+    def lens_factory(src, wavelength = None, f=f, R=R, n=n) -> Kinoform:
+        if wavelength is None: wavelength = src.wavelength
+        return Kinoform(wavelength=wavelength, f=f, R=R, n=n,
                         simulation=src.simulation, z=0)
-
-    err_values = np.linspace(0, 4e-6, 9)
+        
+    ### Random etch error
+    err_values = np.linspace(0, 5e-6, 12)
+    E_range = np.linspace(0.9*E, 1.1*E, 3)
+    n_metrics = 3
+    labels = {
+            "xlabel": [r"Maximum Etch Error $[\mu m]$"] * n_metrics,
+            "ylabel": ["Focal Efficiency", r"FWHM $[\mu m]$", "Strehl Ratio"],
+            "xscale": ["linear"] * n_metrics,
+            "yscale": ["linear", "linear", "linear"],
+            "x_scale_factor":  1e6,                 # m -> um
+            "y_scale_factor": [1.0, 1e6, 1.0],     # FWHM m -> um
+            "label": [f"E={E_i/1000} keV" for E_i in E_range],
+            "title": f"Focal-plane Response for E={E/1000} keV Kinoform",
+            "marker": ["o", "^", "s", "d", "x"],
+            "color": ["red", "orange", "green", "blue", "purple"]
+        }
     out = savedir / "etch_error_vs_intensity_random.png"
     etch_error_vs_intensity(
         source_factory, lens_factory, propagator,
         LensErrors.random_etch, err_values,
-        error_kwargs={"count": N**dim // 3, "seed": 42},
+        E_range=E_range,
+        labels=labels,
+        error_kwargs={"interval": 3, "seed": 42},
         savepath=out,
     )
 
 
 if __name__ == "__main__":
-    _demo()
+    main()

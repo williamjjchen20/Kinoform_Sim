@@ -213,7 +213,14 @@ class Waveform(Object):
     def phase(self):
         field = np.where(self.field != 0, self.field, 0.)
         return np.angle(field)
-
+    
+    def filter(self, aperture): #type: ignore
+        if isinstance(aperture, Aperture): 
+            self.field *= aperture.field
+        elif isinstance(aperture, ThinLens):
+            self.field *= aperture.aperture_field
+        else:
+            raise Exception()
         
 class Aperture(Object):
     def __init__(self, simulation: SimulationObject, z, func=None, **kwargs):
@@ -270,7 +277,7 @@ class ThinLens(Aperture):
     def init_transmittance(self, wave: Waveform):
         assert(not self._transmittance_initialized)
         t_l = self.transmittance
-        base = self.field.astype(np.complex128)
+        base = self.aperture_field.astype(np.complex128)
         self.field = base * t_l(wave.wavelength)
         self._transmittance_initialized = True
         
@@ -294,6 +301,11 @@ class ThinLens(Aperture):
         profile, err = error_func(self, **kwargs)
         self.profile = profile
         return err
+        
+    def reset(self):
+        self.profile = self.orig_profile
+        self.field = self.aperture_field
+        self._transmittance_initialized = False
         
     ## plotting
     def phase(self):

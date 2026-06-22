@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ..propagators import angular_spectrum_method
 from ..classes import *
+from ..metrics import *
 
 script_dir = Path(__file__).resolve().parent
 savedir = (script_dir / "../test_figs/propagation_test").resolve()
