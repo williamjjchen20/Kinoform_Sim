@@ -3,11 +3,11 @@ import matplotlib.pyplot as plt
 import scipy.constants as const
 import functools
 
-from .classes import SimulationObject
+from .classes import SimulationObject, Waveform, Propagator
 
-class Propagator():
-    def __init__(self, propagation_func, dim):
-        self.propagator = functools.partial(propagation_func, dim=dim)
+class AngularSpectrum(Propagator):
+    def __init__(self, dim):
+        super().__init__(angular_spectrum_method, dim=dim)
 
 def angular_spectrum_method(U: np.ndarray, z: float, simulation: SimulationObject, wavelength: float, n=1, dim=1) -> np.ndarray:
     '''

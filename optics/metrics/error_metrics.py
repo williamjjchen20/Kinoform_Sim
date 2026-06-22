@@ -162,6 +162,7 @@ def main():
     err_values = np.linspace(0, 5e-6, 12)
     E_range = np.linspace(0.9*E, 1.1*E, 3)
     n_metrics = 3
+    
     labels = {
             "xlabel": [r"Maximum Etch Error $[\mu m]$"] * n_metrics,
             "ylabel": ["Focal Efficiency", r"FWHM $[\mu m]$", "Strehl Ratio"],
@@ -170,7 +171,7 @@ def main():
             "x_scale_factor":  1e6,                 # m -> um
             "y_scale_factor": [1.0, 1e6, 1.0],     # FWHM m -> um
             "label": [f"E={E_i/1000} keV" for E_i in E_range],
-            "title": f"Focal-plane Response for E={E/1000} keV Kinoform",
+            "title": f"Random Etch for E={E/1000} keV Kinoform",
             "marker": ["o", "^", "s", "d", "x"],
             "color": ["red", "orange", "green", "blue", "purple"]
         }
@@ -183,6 +184,30 @@ def main():
         error_kwargs={"interval": 3, "seed": 42},
         savepath=out,
     )
+    
+    err_values = -np.linspace(0, 2.5e-6, 12)
+    labels = {
+            "xlabel": [r"Maximum Etch Error $[\mu m]$"] * n_metrics,
+            "ylabel": ["Focal Efficiency", r"FWHM $[\mu m]$", "Strehl Ratio"],
+            "xscale": ["linear"] * n_metrics,
+            "yscale": ["linear", "linear", "linear"],
+            "x_scale_factor":  -1e6,                 # m -> um
+            "y_scale_factor": [1.0, 1e6, 1.0],     # FWHM m -> um
+            "label": [f"E={E_i/1000} keV" for E_i in E_range],
+            "title": f"Periodic Etch for E={E/1000} keV Kinoform",
+            "marker": ["o", "^", "s", "d", "x"],
+            "color": ["red", "orange", "green", "blue", "purple"]
+        }
+    out = savedir / "etch_error_vs_intensity_periodic.png"
+    etch_error_vs_intensity(
+        source_factory, lens_factory, propagator,
+        LensErrors.periodic_etch, err_values,
+        E_range=E_range,
+        labels=labels,
+        error_kwargs={"interval": 3},
+        savepath=out,
+    )
+    
 
 
 if __name__ == "__main__":

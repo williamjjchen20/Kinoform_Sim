@@ -8,7 +8,11 @@ import functools, os
 # plt.style.use('_mpl-gallery')
 
 JOULE_TO_EV = 1/const.e
-__all__ = ["SimulationObject", "Waveform", "Aperture", "ThinLens"]
+__all__ = ["SimulationObject", "Propagator", "Waveform", "Aperture", "ThinLens"]
+
+class Propagator():
+    def __init__(self, propagation_func, dim):
+        self.propagator = functools.partial(propagation_func, dim=dim)
 
 class SimulationObject:
     
@@ -51,12 +55,15 @@ class SimulationObject:
             case Waveform():
                 # if len(self.objects["sources"]) == 1: raise Exception("Only one source")
                 self.objects["source"] = object
-            case Aperture():
-                self.objects["aperture"] = object
             case ThinLens():
                 self.objects["lens"] = object
+            case Aperture():
+                self.objects["aperture"] = object
             case _:
                 raise Exception("Unknown Object")
+    
+    def add_propagator(self, propagator: Propagator):
+        self.propagator = propagator
             
     def view(self):
         pass
@@ -69,6 +76,7 @@ class Object():
         self.dim = simulation.dim
         simulation.add_object(self)
         # intialize physical properties
+        self.z = z
         self.center = np.zeros(simulation.dim+1)
         self.center[-1] = z
         
@@ -201,10 +209,14 @@ class Waveform(Object):
         return f"{self.simulation.dim}-D Waveform with energy {self.energy:.3e} eV at {self.center}"
         
     def propagate(self, z, propagation_func):
-        if z+self.center[-1] > self.simulation.Lz: raise Exception(f"Propagation must stay within box length {self.simulation.Lz}")
+        if z+self.z > self.simulation.Lz: 
+            print(f"Propagation must stay within box length {self.simulation.Lz}")
+            diff = z+self.z - self.simulation.Lz
+            z = diff
+            print(f"Propagating for {z}.")
         U = propagation_func(self.field, z, self.simulation, self.wavelength)
         self.field = U
-        self.center[-1] += z
+        self.z += z
         
     def intensity(self):
         I = np.abs(self.field)**2
@@ -246,7 +258,7 @@ class ThinLens(Aperture):
         if thickness_func is not None: self.thickness = thickness_func # type: ignore
           
         super().__init__(simulation, z, func=aperture_func, **kwargs)
-        self.aperture_field = self.field
+        self.aperture_field = np.array(self.field)
         
         if self.simulation.dim == 1:
             self.build_profile(self.grid, **kwargs)
@@ -264,7 +276,7 @@ class ThinLens(Aperture):
     
     def build_profile(self, *args, **kwargs):
         self.profile = self.aperture_field * self.thickness(*args, **kwargs)
-        self.orig_profile=self.profile
+        self.orig_profile=np.array(self.profile)
         
     ## transmittance features
     def transmittance(self, wavelength):

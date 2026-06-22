@@ -20,7 +20,7 @@ class CircularLens(ThinLens):
             aperture_func = lambda X, r=R, **kw: F.single_slit_1D(X, r=r)
         super().__init__(f, aperture_func, simulation, z, thickness_func=None, n=n, **kwargs)
         
-    def plot_profile(self, ax=None, savedir="", label=None, y=0.0):
+    def plot_profile(self, ax=None, savedir="", label=None):
         '''
         Plot the side profile (thickness vs. x) of the lens from
         `self.profile`. For 2D simulations, takes the central row.

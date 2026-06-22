@@ -4,39 +4,6 @@ import scipy.integrate as integrate
 
 from ..classes import Waveform
 
-# def FWHM(wave: Waveform):
-#     '''
-#     Assumes radial invariance
-#     args
-#     - wave: waveform object
-    
-#     return
-#     - d: full width half maximum [m]
-#     '''
-#     I = wave.intensity()
-    
-#     I_max = np.max(I)
-#     I_halfmax = I_max/2
-    
-#     val_idx = np.argmin(np.abs(I-I_halfmax))
-#     idx = np.unravel_index(val_idx, I.shape)
-#     i1 = np.where(np.ravel(I) == I[idx])[0][0]
-#     i1 = np.unravel_index(i1, I.shape)
-#     i2 = np.unravel_index(np.argmax(I), I.shape)
-    
-#     if wave.dim == 1:
-#         X = wave.grid
-#         r1 = X[i1]
-#         r2 = X[i2]
-#         r = np.abs(r1-r2)
-#     else:
-#         X, Y = wave.grid
-#         r1 = np.array([X[i1], Y[i1]])
-#         r2 = np.array([X[i2], Y[i2]])
-#         r = np.linalg.norm(r1-r2)
-#     d = 2*r
-#     return d
-
 def FWHM(wave: Waveform):
     """
     Compute FWHM assuming radial symmetry.
