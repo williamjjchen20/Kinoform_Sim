@@ -107,7 +107,7 @@ class Object():
     def add_error(self, error_func):
         self.error = error_func 
     
-    def view(self, ax=None, xlim=None, ylim=None, savedir="", cmap="Greys_r", color="Black", show_cbar=False, extend=False):
+    def view(self, ax=None, xlim=None, ylim=None, savedir="", cmap="Greys_r", color="Black", labels = {}, show_cbar=False, extend=False):
         if ax is None:
             fig, ax = plt.subplots()
         else:
@@ -137,6 +137,15 @@ class Object():
             norm = colors.Normalize(vmin=0., vmax=data.max())
             label = c_label = ""
             scale="linear"
+            
+        x_scale_factor = labels.get("x_scale_factor", 1.0)
+        y_scale_factor = labels.get("y_scale_factor", 1.0)
+        xlabel = labels.get("xlabel", "x [m]")
+        ylabel = labels.get("ylabel", "y [m]")
+        title  = labels.get("title", f"{type(self).__name__} View")
+        
+        if xlim is not None: xlim = np.array(xlim)*x_scale_factor
+        if ylim is not None: ylim = np.array(ylim)*y_scale_factor
         
         ## plotting treatments based on dimension specified
         if self.simulation.dim == 2:
@@ -146,14 +155,14 @@ class Object():
                     data,
                     norm = norm,
                     cmap=cmap,
-                    extent=[-Lx/2, Lx/2, -Ly/2, Ly/2], #type: ignore
+                    extent=[-Lx/2*x_scale_factor, Lx/2*x_scale_factor, -Ly/2*y_scale_factor, Ly/2*y_scale_factor], #type: ignore
                 )
                 if show_cbar:
                     cbar = fig.colorbar(im, ax=ax, orientation='vertical',
                                 fraction=0.046, pad=0.08)
 
                     cbar.set_label(c_label)
-                ax.set(xlabel="x [m]", ylabel="y [m]", xlim=xlim, ylim=ylim)
+                ax.set(xlabel=xlabel, ylabel=ylabel, title=title, xlim=xlim, ylim=ylim)
                 used_ax = ax
             else:
                 ss = ax.get_subplotspec()
@@ -162,6 +171,7 @@ class Object():
                 ax3d.tick_params(axis='both', pad=2)
                 
                 X, Y = self.grid
+                X, Y = X*x_scale_factor, Y*y_scale_factor
                 mask_x = np.ones(X.shape[1], dtype=bool) if xlim is None \
                     else (X[0, :] >= xlim[0]) & (X[0, :] <= xlim[1])
                 mask_y = np.ones(Y.shape[0], dtype=bool) if ylim is None \
@@ -179,7 +189,7 @@ class Object():
                 if xlim is not None: ax3d.set_xlim3d(*xlim)
                 if ylim is not None: ax3d.set_ylim3d(*ylim)
                 ax3d.set_box_aspect((1, 1, 0.6))
-                ax3d.set(xlabel="x [m]", ylabel="y [m]", zlabel=label)
+                ax3d.set(xlabel=xlabel, ylabel=ylabel, title=title, zlabel=label)
                 used_ax = ax3d
   
         else:

@@ -20,31 +20,54 @@ class CircularLens(ThinLens):
             aperture_func = lambda X, r=R, **kw: F.single_slit_1D(X, r=r)
         super().__init__(f, aperture_func, simulation, z, thickness_func=None, n=n, **kwargs)
         
-    def plot_profile(self, ax=None, savedir="", label=None):
+    def plot_profile(self, ax=None, savedir="", labels=None):
         '''
         Plot the side profile (thickness vs. x) of the lens from
         `self.profile`. For 2D simulations, takes the central row.
+        
+        `labels` is a dict supporting keys:
+          - "label": series label used for the saved filename / title
+          - "xlabel", "ylabel": axis labels
+          - "title": axis title (overrides default)
+          - "xscale", "yscale": matplotlib scales (e.g. "linear", "log")
+          - "x_scale_factor", "y_scale_factor": multiplicative factors
+        A bare string is accepted for backward compatibility and treated as
+        {"label": labels}.
         '''
         if ax is None:
             fig, ax = plt.subplots()
         else:
             fig = ax.get_figure()
 
+        if isinstance(labels, str) or labels is None:
+            labels = {"label": labels}
+
+        label = labels.get("label", None)
+        x_scale_factor = labels.get("x_scale_factor", 1.0)
+        y_scale_factor = labels.get("y_scale_factor", 1.0)
+        xlabel = labels.get("xlabel", "x [m]")
+        ylabel = labels.get("ylabel", "thickness [m]")
+        title  = labels.get("title", f"{label} profile (f={self.f:.3g} m, R={self.R:.3g} m)")
+        xscale = labels.get("xscale", "linear")
+        yscale = labels.get("yscale", "linear")
+
         if self.simulation.dim == 1:
             x = self.grid
             t = self.profile
         else:
             X, _ = self.grid
-            x = X[0, :]
+            x = X[0,:]
             cy = self.profile.shape[0] // 2
-            t = self.profile[cy, :]
+            t = self.profile[cy,:]
 
         mask = np.abs(x) <= self.R
-        ax.fill_between(x[mask], 0, t[mask], color="steelblue", alpha=0.6)
-        ax.plot(x[mask], t[mask], color="navy", lw=1)
-        ax.set(xlabel="x [m]", ylabel="thickness [m]",
-               title=f"{label} profile (f={self.f:.3g} m, R={self.R:.3g} m)")
-        ax.set_xlim(-self.R, self.R)
+        x_plot = x[mask] * x_scale_factor
+        t_plot = t[mask] * y_scale_factor
+        ax.fill_between(x_plot, 0, t_plot, color="steelblue", alpha=0.6)
+        ax.plot(x_plot, t_plot, color="navy", lw=1)
+        ax.set(xlabel=xlabel, ylabel=ylabel, title=title,
+               xscale=xscale, yscale=yscale)
+        ax.set_xlim(-self.R * x_scale_factor, self.R * x_scale_factor)
         ax.axhline(0, color="black", lw=0.5)
         
         if savedir:

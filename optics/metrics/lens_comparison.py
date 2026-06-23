@@ -102,16 +102,19 @@ def plot_comparison_1D(results, savepath):
 
     cmap_cycle = plt.get_cmap("tab10")
 
-    for i, (label, (wave, lens)) in enumerate(results.items()):
+    for i, (name, (wave, lens, labels)) in enumerate(results.items()):
         prof_fig, prof_ax = plt.subplots()
-        lens.plot_profile(ax=prof_ax, savedir=savedir, label=label)
+
+        lens.plot_profile(ax=prof_ax, savedir=savedir, labels=labels)
         plt.close(prof_fig)
         
+        ## Lens phase plot
         lens_ax = lens.view(ax=ax[i, 0], color=cmap_cycle(i%10))
-        lens_ax.set(title=f"{label} Lens Phase")
+        lens_ax.set(title=f"{name} Lens Phase")
 
+        ## Wave intensity slice plot
         wave_ax = wave.view(ax=ax[i, 1], color=cmap_cycle(i%10))
-        wave_ax.set(title=f"{label} Focal Intensity")
+        wave_ax.set(title=f"{name} Focal Intensity")
 
     fig.savefig(savepath)
     plt.close(fig)
@@ -136,25 +139,33 @@ def plot_comparison_2D(results, savepath):
 
     cmap_cycle = plt.get_cmap("tab10")
 
-    for i, (label, (wave, lens)) in enumerate(results.items()):
+    for i, (name, (wave, lens, labels)) in enumerate(results.items()):
         prof_fig, prof_ax = plt.subplots()
-        lens.plot_profile(ax=prof_ax, savedir=savedir, label=label)
+        
+        lens.plot_profile(ax=prof_ax, savedir=savedir, labels=labels)
         plt.close(prof_fig)
         
-        lens_ax = lens.view(ax=ax[i, 0], cmap="twilight", show_cbar=True)
-        lens_ax.set(title=f"{label} Lens Phase")
+        ## Lens phase plot
+        lens_ax = lens.view(ax=ax[i, 0], cmap="twilight", labels=labels, show_cbar=True)
+        lens_ax.set(title=f"{name} Lens Phase")
+        
+        ## Wave intensity/phase plot
+        wave_ax = wave.view(ax=ax[i, 1], cmap="inferno", xlim=(-lens.R/2, lens.R/2), ylim=(-lens.R/2, lens.R/2), 
+                            labels=labels, extend=True, show_cbar=True)
+        wave_ax.set(title=f"{name} Focal Intensity")
 
-        wave_ax = wave.view(ax=ax[i, 1], cmap="inferno", xlim=(-lens.R/2, lens.R/2), ylim=(-lens.R/2, lens.R/2), extend=True, show_cbar=True)
-        wave_ax.set(title=f"{label} Focal Intensity")
-
+        ## Wave intensity slice plot
+        x_scale_factor = labels.get("x_scale_factor", 1.0)
+        xlabel = labels.get("xlabel", "x [m]")
+        
         I = wave.intensity()
         Lx = wave.simulation.Lx
         Nx = I.shape[1]
         x = np.linspace(-Lx/2, Lx/2, Nx)
         cy = I.shape[0] // 2
-        ax[i, 2].plot(x, I[cy, :], color=cmap_cycle(i % 10))
-        ax[i, 2].set(xlim=(-lens.R/2, lens.R/2))
-        ax[i, 2].set(title=f"{label} Central Cut", xlabel="x [m]", ylabel="Intensity", yscale="log")
+        ax[i, 2].plot(x*x_scale_factor, I[cy, :], color=cmap_cycle(i % 10))
+        ax[i, 2].set(xlim=(-lens.R/2*x_scale_factor, lens.R/2*x_scale_factor))
+        ax[i, 2].set(title=f"{name} Central Cut", xlabel=xlabel, ylabel="Intensity", yscale="log")
 
     fig.savefig(savepath)
     plt.close(fig)
@@ -171,6 +182,7 @@ def test_compare_xray_lenses(lens_dict, N, dim):
     f = 1.0         # m
     R = 5e-5        # m
     n = xrl.Refractive_Index("Si", E / 1000, 2.329)
+    
     print(f"Refractive index n = {n}")
     print(f"Energy = {E} eV, f = {f} m, R = {R} m")
 
@@ -188,7 +200,17 @@ def test_compare_xray_lenses(lens_dict, N, dim):
         )
         m = collect_metrics(source, P_in, name)
         metrics.append(m)
-        results[name] = (source, lens)
+        
+        plot_labels = {
+            "label": name,
+            "xlabel": r"x $[\mu m]$",
+            "x_scale_factor": 1e6,
+            "ylabel": r"y $[\mu m]$",
+            "y_scale_factor": 1e6,
+            "title": rf"{name} profile (f={lens.f:.3g} m, R={lens.R *1e6:.3g} $\mu m$)"
+        }
+        
+        results[name] = (source, lens, plot_labels)
 
     print_comparison(metrics)
 
