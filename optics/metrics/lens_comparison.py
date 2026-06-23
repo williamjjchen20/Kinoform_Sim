@@ -241,6 +241,12 @@ def take_user_input():
                 interval=int(input("Interval: "))
                 err_func = LensErrors.random_etch
                 lens_dict[key].append(functools.partial(err_func, max_err=err, interval=interval))
+            case "Taper":
+                if lens != "Kinoform": raise Exception("Phase wrapped lens required!")
+                m = int(input("Lateral zone to start taper (-1 is the outermost): "))
+                proportion = float(input("Proportion: "))
+                err_func = LensErrors.kinoform_taper
+                lens_dict[key].append(functools.partial(err_func, m=m, proportion=proportion, extend=True))
             case "":
                 lens_dict[key].append(None)
             case _:

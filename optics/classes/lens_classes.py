@@ -105,7 +105,7 @@ class Kinoform(CircularLens):
         return t_parabolic % t_2pi
     
     def zone_location(self, m):
-        return 2*m*self.f*self.wavelength + (m*self.wavelength)*2
+        return np.sqrt(2*m*self.f*self.wavelength + (m*self.wavelength)**2)
     
 class LensErrors():
     '''
@@ -154,40 +154,67 @@ class LensErrors():
         return profile, errors
     
     @staticmethod
-    def kinoform_taper(kinoform: Kinoform, m: int, proportion: float, direction: str ="out"):
+    def kinoform_taper(kinoform: Kinoform, m: int | np.ndarray, proportion: float | np.ndarray, direction: str ="out", extend=False, remove_last=False):
         '''
         Adds a taper by a specified percentage on a specified lateral zone
         
         args 
         - kinoform: Kinoform lens
         - m: lateral zone number
-        - proportion: radius proportion tapered off
+        - proportion: radius proportion tapered off (>=0. & <= 1.)
         
         kwargs
         - direction: inward "in" or outward "out from the specified zone 
+        - extend: taper all zones m' >= m 
         '''
-        
         zones = kinoform.zones
-        assert (m <= zones)
-        r_m_in = kinoform.zone_location(m)
-        r_m_out = kinoform.zone_location(m+1)
-        
+        m_total = int(np.ceil(zones))
+        if isinstance(m, int): ms = np.array([m])
+        else: ms = np.asarray(m)
+        if isinstance(proportion, float): proportions = np.array([proportion])
+        else: proportions = np.asarray(proportion)
+
+        # convert negative indices to positive equivalents wrt zones
+        ms = np.where(ms < 0, m_total + ms, ms)
+
+        if extend: 
+            m_min = np.min(ms)
+            ms = np.arange(m_min, m_total)
+            if proportions.size != ms.size:
+                print("Extending last specified proportion...")
+                proportions = np.append(proportions, np.ones(ms.size-proportions.size)*proportions[-1])
+
+        assert (np.all(ms <= zones))
+        assert (len(proportions) == len(ms)), "proportions must match m in length (or be scalar)"
+    
+        r_m_in = kinoform.zone_location(ms)
+        r_m_out = kinoform.zone_location(ms+1)
+
         if kinoform.dim == 1:
-            r = kinoform.grid
+            r = np.abs(kinoform.grid)
         else:
             X, Y = kinoform.grid
-            r = X**2 + Y**2
-
-        # cut from curved face outward
-        if direction == "out":
-            r_cut = r_m_in + proportion*np.abs(r_m_out-r_m_in)
-            mask = (r < r_cut) & (r >= r_m_in)
-        # cut from vertical face inward
-        elif direction == "in":
-            r_cut = r_m_out - proportion*np.abs(r_m_out-r_m_in) 
-            mask = (r < r_m_out) & (r >= r_cut)
+            r = np.sqrt(X**2 + Y**2)
             
-        profile = np.array(kinoform.grid)
-        profile[mask] = 0.
+        if remove_last: 
+            r_m_in = np.insert(r_m_in, -1, kinoform.zone_location(int(np.floor(zones))))
+            r_m_out = np.insert(r_m_out, -1, kinoform.zone_location(int(np.ceil(zones))))
+            proportions = np.insert(proportions, -1, 1.)
+            
+        profile = np.array(kinoform.profile)
+        for r_in, r_out, p in (zip(r_m_in, r_m_out, proportions)):
+            # print(r_in, r_out, p)
+            # bound by lens apertue
+            # if r_out > kinoform.R: r_out = kinoform.R
+            # cut from curved face outward
+            if direction.lower() == "out":
+                r_cut = r_in + p*np.abs(r_out-r_in)
+                mask = (r < r_cut) & (r >= r_in)
+            # cut from vertical face inward
+            elif direction.lower() == "in":
+                r_cut = r_out - p*np.abs(r_out-r_in) 
+                mask = (r < r_out) & (r >= r_cut)
+                
+            profile[mask] = 0.
         
-        return profile
+        return profile, None

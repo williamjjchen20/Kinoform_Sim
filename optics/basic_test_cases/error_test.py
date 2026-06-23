@@ -75,9 +75,47 @@ def test_kinoform_random_etch(max_err):
     fig.savefig(out)
     plt.close(fig)
     print(f"Saved etched kinoform profile to {out}.")
+    
+def test_kinoform_taper(proportion):
+    print("Testing Kinoform with random etch error (1D)...")
+    Lx, Lz = 1.5e-4, 10000
+    N = 5000
 
+    E = 8.5e3
+    f = 1.0
+    R = 5e-5
+    n = xrl.Refractive_Index("Si", E / 1000, 2.329)
 
+    simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz)
+
+    source = ConstantBeam(energy=E, simulation=simulation, z=0)
+    lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n,
+                    simulation=simulation, z=0)
+
+    print("Zones:", lens.zones)
+    n = 5
+    proportions = np.linspace(0.1, proportion, n)
+    lens.add_error(LensErrors.kinoform_taper, m=-n, proportion=proportions, direction="out", extend=True, remove_last=True)
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+    x = lens.grid
+    mask = np.abs(x) <= lens.R
+    ax.fill_between(x[mask], 0, lens.profile[mask], color="steelblue", alpha=0.6)
+    ax.plot(x[mask], lens.profile[mask], color="navy", lw=1)
+    ax.axhline(0, color="black", lw=0.5)
+    ax.set(xlabel="x [m]", ylabel="thickness [m]",
+           title=f"Tapered Kinoform profile (proportion={proportion})")
+    ax.set_xlim(-lens.R, lens.R)
+
+    out = savedir / "Kinoform_taper_profile.png"
+    fig.savefig(out)
+    plt.close(fig)
+    print(f"Saved etched kinoform profile to {out}.")
+    
 if __name__ == "__main__":
-    max_err = 4e-7
-    test_kinoform_etch(max_err)
-    test_kinoform_random_etch(max_err)
+    # max_err = 4e-7
+    # test_kinoform_etch(max_err)
+    # test_kinoform_random_etch(max_err)
+    
+    taper_proportion = 0.5
+    test_kinoform_taper(taper_proportion)
