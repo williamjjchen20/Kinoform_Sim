@@ -104,7 +104,7 @@ class Kinoform(CircularLens):
         t_parabolic = (np.sqrt(r_squared+self.f**2)-self.f)/self.delta
         return t_parabolic % t_2pi
     
-    def r_m(self, m):
+    def zone_location(self, m):
         return 2*m*self.f*self.wavelength + (m*self.wavelength)*2
     
 class LensErrors():
@@ -154,9 +154,40 @@ class LensErrors():
         return profile, errors
     
     @staticmethod
-    def kinoform_taper():
+    def kinoform_taper(kinoform: Kinoform, m: int, proportion: float, direction: str ="out"):
+        '''
+        Adds a taper by a specified percentage on a specified lateral zone
+        
+        args 
+        - kinoform: Kinoform lens
+        - m: lateral zone number
+        - proportion: radius proportion tapered off
+        
+        kwargs
+        - direction: inward "in" or outward "out from the specified zone 
         '''
         
-        '''
+        zones = kinoform.zones
+        assert (m <= zones)
+        r_m_in = kinoform.zone_location(m)
+        r_m_out = kinoform.zone_location(m+1)
         
-        pass
+        if kinoform.dim == 1:
+            r = kinoform.grid
+        else:
+            X, Y = kinoform.grid
+            r = X**2 + Y**2
+
+        # cut from curved face outward
+        if direction == "out":
+            r_cut = r_m_in + proportion*np.abs(r_m_out-r_m_in)
+            mask = (r < r_cut) & (r >= r_m_in)
+        # cut from vertical face inward
+        elif direction == "in":
+            r_cut = r_m_out - proportion*np.abs(r_m_out-r_m_in) 
+            mask = (r < r_m_out) & (r >= r_cut)
+            
+        profile = np.array(kinoform.grid)
+        profile[mask] = 0.
+        
+        return profile
