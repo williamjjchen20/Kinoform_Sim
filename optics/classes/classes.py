@@ -2,6 +2,7 @@ import numpy as np
 import xraylib
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
+from matplotlib import cm
 import scipy.constants as const
 import functools, os
 
@@ -107,69 +108,55 @@ class Object():
     def add_error(self, error_func):
         self.error = error_func 
     
-    def view(self, ax=None, xlim=None, ylim=None, savedir="", cmap="Greys_r", color="Black", labels = {}, show_cbar=False, extend=False):
+    def view(self, ax=None, xlim=None, ylim=None, savedir="", cmap="Greys_r",
+             color="Black", labels=None, show_cbar=False, extend=False):
         if ax is None:
             fig, ax = plt.subplots()
         else:
             fig = ax.get_figure()
-
         if self.field is None: raise NotImplementedError
-        
-        ## initialize specs based on which object is being plotted
-        if isinstance(self, Waveform):
-            data = self.intensity()
-            label="Intensity"
-            scale="log"
-            if extend:
-                phase = self.phase()
-                norm = colors.Normalize(vmin=phase.min(), vmax=phase.max())
-                c_label="Phase"
-            else:
-                norm = colors.LogNorm(vmin=1e-4, vmax=data.max())
-                c_label = label
-        elif isinstance(self, ThinLens):
-            data = self.phase()
-            norm = colors.Normalize(vmin=data.min(), vmax=data.max())
-            label = c_label = "Phase"
-            scale="linear"
-        else:
-            data = self.field
-            norm = colors.Normalize(vmin=0., vmax=data.max())
-            label = c_label = ""
-            scale="linear"
-            
+        labels = dict(labels or {})
+
+        ## decide what scalar data, norm, and colorbar mappable to use per type
+        data, norm, scale, label, c_label, sm, rgb = self._view_data(extend)
+
         x_scale_factor = labels.get("x_scale_factor", 1.0)
         y_scale_factor = labels.get("y_scale_factor", 1.0)
         xlabel = labels.get("xlabel", "x [m]")
-        ylabel = labels.get("ylabel", "y [m]")
+        ylabel = labels.get("ylabel", "y [m]" if self.simulation.dim == 2 else label)
         title  = labels.get("title", f"{type(self).__name__} View")
-        
-        if xlim is not None: xlim = np.array(xlim)*x_scale_factor
-        if ylim is not None: ylim = np.array(ylim)*y_scale_factor
-        
+
+        if xlim is not None: xlim = np.array(xlim) * x_scale_factor
+        if ylim is not None: ylim = np.array(ylim) * y_scale_factor
+
         ## plotting treatments based on dimension specified
         if self.simulation.dim == 2:
             if not extend:
                 Lx, Ly = self.simulation.Lx, self.simulation.Ly
-                im = ax.imshow(
-                    data,
-                    norm = norm,
-                    cmap=cmap,
-                    extent=[-Lx/2*x_scale_factor, Lx/2*x_scale_factor, -Ly/2*y_scale_factor, Ly/2*y_scale_factor], #type: ignore
-                )
-                if show_cbar:
-                    cbar = fig.colorbar(im, ax=ax, orientation='vertical',
-                                fraction=0.046, pad=0.08)
+                extent = [-Lx/2*x_scale_factor, Lx/2*x_scale_factor,
+                          -Ly/2*y_scale_factor, Ly/2*y_scale_factor]
+                # if we have a precomputed RGB (domain coloring), display it directly
+                im = ax.imshow(rgb if rgb is not None else data,
+                               norm=None if rgb is not None else norm,
+                               cmap=None if rgb is not None else cmap,
+                               extent=extent, origin="lower") #type: ignore
 
+                if show_cbar:
+                    mappable = sm if sm is not None else im
+                    cbar = fig.colorbar(mappable, ax=ax, orientation="vertical",
+                                        fraction=0.046, pad=0.08)
                     cbar.set_label(c_label)
+                    if rgb is not None:
+                        self._add_phase_wheel(fig)
+
                 ax.set(xlabel=xlabel, ylabel=ylabel, title=title, xlim=xlim, ylim=ylim)
                 used_ax = ax
             else:
                 ss = ax.get_subplotspec()
                 ax.remove()
                 ax3d = fig.add_subplot(ss, projection="3d")
-                ax3d.tick_params(axis='both', pad=2)
-                
+                ax3d.tick_params(axis="both", pad=2)
+
                 X, Y = self.grid
                 X, Y = X*x_scale_factor, Y*y_scale_factor
                 mask_x = np.ones(X.shape[1], dtype=bool) if xlim is None \
@@ -180,27 +167,86 @@ class Object():
                 Xc, Yc, Dc = X[idx], Y[idx], data[idx]
 
                 surf = ax3d.plot_surface(Xc, Yc, Dc, norm=norm, cmap=cmap)
-                
+
                 if show_cbar:
-                    cbar = fig.colorbar(surf, ax=ax3d, orientation='vertical',
-                                shrink=0.7, pad=0.12)
+                    cbar = fig.colorbar(surf, ax=ax3d, orientation="vertical",
+                                        shrink=0.7, pad=0.12)
                     cbar.set_label(c_label)
-                
+
                 if xlim is not None: ax3d.set_xlim3d(*xlim)
                 if ylim is not None: ax3d.set_ylim3d(*ylim)
                 ax3d.set_box_aspect((1, 1, 0.6))
                 ax3d.set(xlabel=xlabel, ylabel=ylabel, title=title, zlabel=label)
                 used_ax = ax3d
-  
         else:
             ax.plot(self.grid, data, color=color)
-            ax.set(xlabel="x [m]", ylabel=label, yscale=scale, xlim=xlim, ylim=ylim)
+            ax.set(xlabel=xlabel, ylabel=label, yscale=scale, title=title,
+                   xlim=xlim, ylim=ylim)
             used_ax = ax
 
         if savedir:
             fig.savefig(os.path.join(savedir, f"{type(self).__name__}_z={self.center[-1]}.png"))
-
         return used_ax
+
+    def _view_data(self, extend):
+        '''
+        Return (data, norm, scale, label, c_label, sm, rgb) for `view`.
+        - data: scalar field for plotting (intensity / phase / field).
+        - norm: matplotlib Normalize for `data`.
+        - scale: y-scale for 1D plots ("linear" or "log").
+        - label: axis label for the data quantity.
+        - c_label: colorbar label.
+        - sm: optional ScalarMappable used for the colorbar (overrides imshow).
+        - rgb: optional precomputed HxWx3 array for domain coloring (2D Waveform).
+        '''
+        sm = None
+        rgb = None
+        if isinstance(self, Waveform):
+            data = self.intensity()
+            label = "Intensity"
+            scale = "log"
+            c_label = label
+            phase = self.phase()
+            if extend or self.simulation.dim != 2:
+                norm = colors.LogNorm(vmin=np.min(phase),
+                                      vmax=np.max(phase)) if data.max() > 0 else colors.Normalize()
+            else:
+                # domain coloring: |field| -> lightness (log), phase -> hue
+
+                pos = data[data > 0]
+                vmin = pos.min() if pos.size else 1e-12
+                vmax = data.max() if data.max() > 0 else 1.0
+                lnorm = colors.LogNorm(vmin=vmin, vmax=vmax)
+                v = np.clip(lnorm(data).filled(0) if hasattr(lnorm(data), "filled") else lnorm(data), 0, 1)
+                h = (phase + np.pi) / (2*np.pi)
+                s = np.ones_like(h)
+                rgb = colors.hsv_to_rgb(np.dstack([h, s, v]))
+                norm = lnorm
+                sm = cm.ScalarMappable(norm=lnorm, cmap="Greys_r")
+        elif isinstance(self, ThinLens):
+            data = self.phase()
+            norm = colors.Normalize(vmin=data.min(), vmax=data.max())
+            label = c_label = "Phase"
+            scale = "linear"
+        else:
+            data = self.field
+            norm = colors.Normalize(vmin=0., vmax=data.max())
+            label = c_label = ""
+            scale = "linear"
+        return data, norm, scale, label, c_label, sm, rgb
+
+    @staticmethod
+    def _add_phase_wheel(fig, rect=(0.82, 0.75, 0.15, 0.15)):
+        '''Add a polar HSV color wheel inset annotating phase in [-pi, pi].'''
+        wax = fig.add_axes(rect, projection="polar") #type: ignore
+        theta = np.linspace(0, 2*np.pi, 360)
+        r = np.linspace(0.5, 1.0, 2)
+        T, _ = np.meshgrid(theta, r)
+        wax.pcolormesh(theta, r, T, cmap="hsv", shading="auto")
+        wax.set_yticks([])
+        wax.set_xticks([0, np.pi/2, np.pi, 3*np.pi/2])
+        wax.set_xticklabels(["0", "π/2", "±π", "-π/2"])
+        return wax
 
         
 class Waveform(Object):
