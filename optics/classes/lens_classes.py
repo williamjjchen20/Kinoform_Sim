@@ -81,7 +81,8 @@ class XrayParabolicLens(CircularLens):
             Y = args[1]
             r_squared += Y**2
         # Elements of modern x-ray physics (2001)
-        t_parabolic = r_squared/(2*self.f*self.delta)
+        # t_parabolic = r_squared/(2*self.f*self.delta) # paraxial approximation
+        t_parabolic = (np.sqrt(r_squared+self.f**2)-self.f)/self.delta
     
         return t_parabolic
         
@@ -89,6 +90,7 @@ class Kinoform(CircularLens):
     def __init__(self, wavelength, f, R, n, simulation: SimulationObject, z, **kwargs):
         self.wavelength = wavelength
         super().__init__(f, R, n, simulation, z,**kwargs)
+        self.zones = (np.sqrt(f**2+R**2)-f)/wavelength
         
     def thickness(self, *args, **kwargs):
         ## Note: Bandwidth limited by requiring wavelength for a specific energy of x-ray
@@ -98,8 +100,12 @@ class Kinoform(CircularLens):
         if self.simulation.dim == 2:
             Y = args[1]
             r_squared += Y**2
-        t_parabolic = r_squared/(2*self.f*self.delta)
+        # t_parabolic = r_squared/(2*self.f*self.delta)
+        t_parabolic = (np.sqrt(r_squared+self.f**2)-self.f)/self.delta
         return t_parabolic % t_2pi
+    
+    def r_m(self, m):
+        return 2*m*self.f*self.wavelength + (m*self.wavelength)*2
     
 class LensErrors():
     '''
@@ -146,3 +152,11 @@ class LensErrors():
         elif np.all(lens.profile <= 0): profile[profile > 0] = 0
         else: pass
         return profile, errors
+    
+    @staticmethod
+    def kinoform_taper():
+        '''
+        
+        '''
+        
+        pass

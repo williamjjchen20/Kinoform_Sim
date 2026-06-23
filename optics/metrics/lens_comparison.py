@@ -258,7 +258,7 @@ def take_user_input():
 def main():
     args = parser.parse_args()
     dim = 2
-    N = 1024
+    N = args.N
     lenses = take_user_input()
     print(lenses)
     test_compare_xray_lenses(lenses, N, dim)

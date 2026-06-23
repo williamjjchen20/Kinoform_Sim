@@ -5,10 +5,9 @@ import matplotlib.colors as colors
 import scipy.constants as const
 import functools, os
 
-# plt.style.use('_mpl-gallery')
+__all__ = ["SimulationObject", "Propagator", "Waveform", "Aperture", "ThinLens"]
 
 JOULE_TO_EV = 1/const.e
-__all__ = ["SimulationObject", "Propagator", "Waveform", "Aperture", "ThinLens"]
 
 class Propagator():
     def __init__(self, propagation_func, dim):

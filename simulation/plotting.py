@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.colors as colors
 import os, functools
 import time
 from pathlib import Path
@@ -70,18 +71,21 @@ if __name__ == "__main__":
     
     t_start = time.time()
     view = plot_sideview(sim, z_max=Lz, dz=dz)
+    I = np.abs(view)**2
     t_end = time.time()
-    print("Time Taken:", t_end-t_start)
+    print(f"Time Taken: {t_end-t_start} s")
 
     fig, ax = plt.subplots(figsize=(10, 4))
-    Nz = int(Lz // dz)
 
-    ax.imshow(np.abs(view) ** 2,
-              extent=[0, Lz, -Lx / 2, Lx / 2], #type: ignore
-              aspect="auto", origin="lower", cmap="inferno",
-              vmin=0.0, vmax=1.0)
-    ax.set(xlabel="z [m]", ylabel="x [m]",
-           title="Kinoform side-view intensity")
+    norm = colors.LogNorm(vmin=1e-4, vmax=I.max())
+    im = ax.imshow(I, norm=norm,
+              extent=[0, Lz, -Lx*1e6 / 2, Lx*1e6 / 2], #type: ignore
+              aspect="auto", origin="lower", cmap="inferno")
+    cbar = fig.colorbar(im, ax=ax, orientation='vertical', fraction=0.046, pad=0.08)
+    cbar.set_label("Intensity")
+    
+    ax.set(xlabel="z [m]", ylabel=r"x $[\mu m]$",
+           title=rf"Kinoform (f={f} m, R={R*1e6} $\mu m$) intensity")
     out = savedir / "kinoform_sideview.png"
     fig.savefig(out)
     plt.close(fig)
