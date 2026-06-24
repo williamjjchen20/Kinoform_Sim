@@ -158,16 +158,23 @@ class Object():
                 scale = "linear"
             return data, norm, scale, label, c_label, sm, rgb
         
-        def _add_phase_wheel(fig, rect=(0.82, 0.75, 0.15, 0.15), cmap="twilight"):
-            '''Add a polar color wheel inset annotating phase in [-pi, pi].'''
-            wax = fig.add_axes(rect, projection="polar") #type: ignore
+        def _add_phase_wheel(host_ax, size=0.22, pad=0.1,
+                             cmap=_phase_cmap, text_color="white"):
+            '''Add a polar phase color wheel anchored at the top-right of `host_ax`.'''
+            # bbox in host_ax coords: top-right corner, size x size of the axes
+            bbox = (1.0 - size - pad, 1.0 - size - pad, size, size)
+            wax = host_ax.inset_axes(bbox, projection="polar")
             theta = np.linspace(0, 2*np.pi, 360)
             r = np.linspace(0.5, 1.0, 2)
             T, _ = np.meshgrid(theta, r)
             wax.pcolormesh(theta, r, T, cmap=cmap, shading="auto")
             wax.set_yticks([])
             wax.set_xticks([0, np.pi/2, np.pi, 3*np.pi/2])
-            wax.set_xticklabels(["0", "π/2", "±π", "-π/2"])
+            wax.set_xticklabels(["0", "π/2", "±π", "-π/2"], color=text_color)
+            wax.tick_params(colors=text_color, pad=-2)
+            for spine in wax.spines.values():
+                spine.set_edgecolor(text_color)
+            wax.patch.set_alpha(0.0)
             return wax
             
         if ax is None:
@@ -208,7 +215,7 @@ class Object():
                                         fraction=0.046, pad=0.08)
                     cbar.set_label(c_label)
                     if rgb is not None:
-                        _add_phase_wheel(fig, cmap=_phase_cmap)
+                        _add_phase_wheel(ax, cmap=_phase_cmap)
 
                 ax.set(xlabel=xlabel, ylabel=ylabel, title=title, xlim=xlim, ylim=ylim)
                 used_ax = ax

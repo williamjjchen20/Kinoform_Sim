@@ -197,50 +197,9 @@ def test_lens_xray():
 
 def test_kinoform():
     print("Testing Kinoform (X-ray)...")
-    # width, height = 1.5e-4, 1.5e-4
-    # Lx, Ly, Lz = width, height, 10000
-    # N=2048
-    
-    # # parameters for simulation
-    # E = 8.5e3 # keV
-    # f = 1. # m
-    # R = 5e-5
-    # n = xrl.Refractive_Index("Si", E/1000, 2.329)
-    # print("Refractive Index:", n)
-    # assert (R < Lx and R < Ly)
-    
-    # simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=N)
-    # propagator = functools.partial(angular_spectrum_method, dim=2)
-    
-    # source = ConstantBeam(energy=E, simulation=simulation, z=0)
-    # lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n, simulation=simulation, z=0)    
-    # lens.plot_profile(ax=plt.figure().gca(),savedir=str(savedir))
-    
-    # fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(18, 4), squeeze=False, sharey=True)
-    # lens.init_transmittance(source)
-    # lens.view(ax=ax[0, 0], show_cbar=True)
-    # source.view(ax=ax[0, 1])
-    
-    # ## Voelz and Roggemann (2009) sampling criterion to avoid aliasing
-    # f_s = source.wavelength*np.abs(lens.f)/(2*lens.R) 
-    # assert(Lx/N < f_s and Ly/N < f_s)
-    
-    # z1, z2 = lens.center[-1], lens.f
-    # print("Initial Max Intensity:", np.max(source.intensity()))
-    # source.propagate(z1, propagator)
-    # source.filter(lens)
-    # lens.transform(source)
-    # print("Post-Lens Max Intensity:", np.max(source.intensity()))
-    # source.propagate(z2, propagator)
-    # source.view(ax=ax[0, 2], show_cbar=True)
-    # print("Final Max Intensity:", np.max(source.intensity()))
-    
-    # ax[0,0].set(title=f"Transmittance Phase (R={lens.R*1000} mm, f={lens.f} m)")
-    # ax[0,1].set(title=f"Initial Beam")
-    # ax[0,2].set(title=f"Propagated Beam(z={lens.f} m)")
-    # plt.savefig(os.path.join(savedir, "Ideal_Kinoform"))
+
     Lx, Ly, Lz = 1.5e-4, 1.5e-4, 10000
-    N = 5000
+    N = 1024
 
     # parameters for simulation
     E = 8.5e3       # eV
