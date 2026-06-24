@@ -78,20 +78,38 @@ class CircularLens(ThinLens):
         return ax
     
 class OpticalLens(CircularLens):
-    def __init__(self, f, R, n, simulation: SimulationObject, z, **kwargs):
-        super().__init__(f, R, n, simulation, z,**kwargs)
+    def __init__(self, R, n, t0, R1, R2, simulation: SimulationObject, z, **kwargs):
+        self.t0 = t0
+        self.R1 = R1
+        self.R2 = R2
+        assert (R1 != R2)
+        self.f = 1/((n-1)*(1/R1-1/R2))
+        print(self.f)
+        super().__init__(self.f, R, n, simulation, z,**kwargs)
         
-    def transmittance(self, *args, wavelength, **kwargs):
+    def thickness(self, *args, **kwargs):
         X = args[0]
         r_squared = X**2
-        k = 2*const.pi/wavelength
-        
         if self.simulation.dim == 2:
             Y = args[1]
             r_squared += Y**2
+        # Elements of modern x-ray physics (2001)
+        # t_parabolic = r_squared/(2*self.f*self.delta) # paraxial approximation
+        t_parabolic = self.t0-r_squared/2*(1/self.R1 - 1/self.R2)
+    
+        return t_parabolic
+        
+    # def transmittance(self, *args, wavelength, **kwargs):
+    #     X = args[0]
+    #     r_squared = X**2
+    #     k = 2*const.pi/wavelength
+        
+    #     if self.simulation.dim == 2:
+    #         Y = args[1]
+    #         r_squared += Y**2
 
-        t =  np.exp(-1j*k*r_squared/(2*self.f))
-        return t
+    #     t =  np.exp(-1j*k*r_squared/(2*self.f))
+    #     return t
 
 class XrayParabolicLens(CircularLens):
     def __init__(self, f, R, n, simulation: SimulationObject, z, **kwargs):

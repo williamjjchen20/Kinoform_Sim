@@ -48,7 +48,7 @@ class GaussianBeam(Waveform):
         '''
         super().__init__(energy, simulation, z, **kwargs)
         
-    def func(self, *args, z=0., U0=1.0, w0=1.0):
+    def func(self, *args, z=0., U0=1.0, w0=1.0, **kwargs):
         wavelength = self.wavelength
         n = self.simulation.n
         
@@ -61,9 +61,9 @@ class GaussianBeam(Waveform):
         
         if self.simulation.dim == 2:
             Y = args[1]
-            U = U0*(w0/wz)*np.exp(-(X**2+Y**2)/wz**2)*np.exp(-1j*(k*z+k*(X**2+Y**2)/(2*Rz)-np.arctan(z/zR)))
+            U = U0*(w0/wz)*np.exp(-(X**2+Y**2)/wz**2)*np.exp(1j*(k*z+k*(X**2+Y**2)/(2*Rz)-np.arctan(z/zR)))
         else: # dim == 1
-            U = U0*np.sqrt(w0/wz)*np.exp(-X**2/wz**2)*np.exp(-1j*(k*z+k*X**2/(2*Rz)-np.arctan(z/zR)))
+            U = U0*np.sqrt(w0/wz)*np.exp(-X**2/wz**2)*np.exp(1j*(k*z+k*X**2/(2*Rz)-0.5*np.arctan(z/zR)))
             
         return U
 
@@ -76,7 +76,9 @@ class ConstantBeam(Waveform):
         
         super().__init__(energy, simulation, z, **kwargs)
        
-    def func(self, *args, z=0, U0=1.0):
+    def func(self, *args, z=0, U0=1.0, **kwargs):
         X = args[0]
-        U = np.ones_like(X)*U0
+        wavelength = self.wavelength
+        k = 2*const.pi/wavelength
+        U = np.ones_like(X)*U0*np.exp(1j*k*z)
         return U

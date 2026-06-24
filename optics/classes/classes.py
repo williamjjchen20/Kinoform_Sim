@@ -110,6 +110,66 @@ class Object():
     
     def view(self, ax=None, xlim=None, ylim=None, savedir="", cmap="Greys_r",
              color="Black", labels=None, show_cbar=False, extend=False):
+        
+        _phase_cmap = "twilight"
+        def _view_data(self, extend):
+            '''
+            Return (data, norm, scale, label, c_label, sm, rgb) for `view`.
+            - data: scalar field for plotting (intensity / phase / field).
+            - norm: matplotlib Normalize for `data`.
+            - scale: y-scale for 1D plots ("linear" or "log").
+            - label: axis label for the data quantity.
+            - c_label: colorbar label.
+            - sm: optional ScalarMappable used for the colorbar (overrides imshow).
+            - rgb: optional precomputed HxWx3 array for domain coloring (2D Waveform).
+            '''
+            sm = None
+            rgb = None
+            if isinstance(self, Waveform):
+                data = self.intensity()
+                label = "Intensity"
+                scale = "log"
+                c_label = label
+                phase = self.phase()
+                if extend or self.simulation.dim != 2:
+                    norm = colors.LogNorm(vmin=np.min(phase),
+                                        vmax=np.max(phase)) if data.max() > 0 else colors.Normalize()
+                else:
+                    # domain coloring: |field| -> lightness (log), phase -> cyclic cmap
+                    vmin = 1e-3*data.max() if data.max() > 0 else 0.0
+                    vmax = data.max() if data.max() > 0 else 1.0
+                    lnorm = colors.LogNorm(vmin=vmin, vmax=vmax)
+                    lv = lnorm(data)
+                    v = np.clip(lv.filled(0) if hasattr(lv, "filled") else lv, 0, 1)
+                    hue = (phase + np.pi) / (2*np.pi)
+                    rgb_phase = plt.get_cmap(_phase_cmap)(hue)[..., :3]
+                    rgb = rgb_phase * v[..., None]
+                    norm = lnorm
+                    sm = cm.ScalarMappable(norm=lnorm, cmap="Greys_r")
+            elif isinstance(self, ThinLens):
+                data = self.phase()
+                norm = colors.Normalize(vmin=data.min(), vmax=data.max())
+                label = c_label = "Phase"
+                scale = "linear"
+            else:
+                data = self.field
+                norm = colors.Normalize(vmin=0., vmax=data.max())
+                label = c_label = ""
+                scale = "linear"
+            return data, norm, scale, label, c_label, sm, rgb
+        
+        def _add_phase_wheel(fig, rect=(0.82, 0.75, 0.15, 0.15), cmap="twilight"):
+            '''Add a polar color wheel inset annotating phase in [-pi, pi].'''
+            wax = fig.add_axes(rect, projection="polar") #type: ignore
+            theta = np.linspace(0, 2*np.pi, 360)
+            r = np.linspace(0.5, 1.0, 2)
+            T, _ = np.meshgrid(theta, r)
+            wax.pcolormesh(theta, r, T, cmap=cmap, shading="auto")
+            wax.set_yticks([])
+            wax.set_xticks([0, np.pi/2, np.pi, 3*np.pi/2])
+            wax.set_xticklabels(["0", "π/2", "±π", "-π/2"])
+            return wax
+            
         if ax is None:
             fig, ax = plt.subplots()
         else:
@@ -118,7 +178,7 @@ class Object():
         labels = dict(labels or {})
 
         ## decide what scalar data, norm, and colorbar mappable to use per type
-        data, norm, scale, label, c_label, sm, rgb = self._view_data(extend)
+        data, norm, scale, label, c_label, sm, rgb = _view_data(self, extend)
 
         x_scale_factor = labels.get("x_scale_factor", 1.0)
         y_scale_factor = labels.get("y_scale_factor", 1.0)
@@ -133,8 +193,9 @@ class Object():
         if self.simulation.dim == 2:
             if not extend:
                 Lx, Ly = self.simulation.Lx, self.simulation.Ly
+                assert Ly is not None 
                 extent = [-Lx/2*x_scale_factor, Lx/2*x_scale_factor,
-                          -Ly/2*y_scale_factor, Ly/2*y_scale_factor]
+                          -Ly/2*y_scale_factor, Ly/2*y_scale_factor] 
                 # if we have a precomputed RGB (domain coloring), display it directly
                 im = ax.imshow(rgb if rgb is not None else data,
                                norm=None if rgb is not None else norm,
@@ -147,7 +208,7 @@ class Object():
                                         fraction=0.046, pad=0.08)
                     cbar.set_label(c_label)
                     if rgb is not None:
-                        self._add_phase_wheel(fig)
+                        _add_phase_wheel(fig, cmap=_phase_cmap)
 
                 ax.set(xlabel=xlabel, ylabel=ylabel, title=title, xlim=xlim, ylim=ylim)
                 used_ax = ax
@@ -188,67 +249,6 @@ class Object():
             fig.savefig(os.path.join(savedir, f"{type(self).__name__}_z={self.center[-1]}.png"))
         return used_ax
 
-    def _view_data(self, extend):
-        '''
-        Return (data, norm, scale, label, c_label, sm, rgb) for `view`.
-        - data: scalar field for plotting (intensity / phase / field).
-        - norm: matplotlib Normalize for `data`.
-        - scale: y-scale for 1D plots ("linear" or "log").
-        - label: axis label for the data quantity.
-        - c_label: colorbar label.
-        - sm: optional ScalarMappable used for the colorbar (overrides imshow).
-        - rgb: optional precomputed HxWx3 array for domain coloring (2D Waveform).
-        '''
-        sm = None
-        rgb = None
-        if isinstance(self, Waveform):
-            data = self.intensity()
-            label = "Intensity"
-            scale = "log"
-            c_label = label
-            phase = self.phase()
-            if extend or self.simulation.dim != 2:
-                norm = colors.LogNorm(vmin=np.min(phase),
-                                      vmax=np.max(phase)) if data.max() > 0 else colors.Normalize()
-            else:
-                # domain coloring: |field| -> lightness (log), phase -> hue
-
-                pos = data[data > 0]
-                vmin = pos.min() if pos.size else 1e-12
-                vmax = data.max() if data.max() > 0 else 1.0
-                lnorm = colors.LogNorm(vmin=vmin, vmax=vmax)
-                v = np.clip(lnorm(data).filled(0) if hasattr(lnorm(data), "filled") else lnorm(data), 0, 1)
-                h = (phase + np.pi) / (2*np.pi)
-                s = np.ones_like(h)
-                rgb = colors.hsv_to_rgb(np.dstack([h, s, v]))
-                norm = lnorm
-                sm = cm.ScalarMappable(norm=lnorm, cmap="Greys_r")
-        elif isinstance(self, ThinLens):
-            data = self.phase()
-            norm = colors.Normalize(vmin=data.min(), vmax=data.max())
-            label = c_label = "Phase"
-            scale = "linear"
-        else:
-            data = self.field
-            norm = colors.Normalize(vmin=0., vmax=data.max())
-            label = c_label = ""
-            scale = "linear"
-        return data, norm, scale, label, c_label, sm, rgb
-
-    @staticmethod
-    def _add_phase_wheel(fig, rect=(0.82, 0.75, 0.15, 0.15)):
-        '''Add a polar HSV color wheel inset annotating phase in [-pi, pi].'''
-        wax = fig.add_axes(rect, projection="polar") #type: ignore
-        theta = np.linspace(0, 2*np.pi, 360)
-        r = np.linspace(0.5, 1.0, 2)
-        T, _ = np.meshgrid(theta, r)
-        wax.pcolormesh(theta, r, T, cmap="hsv", shading="auto")
-        wax.set_yticks([])
-        wax.set_xticks([0, np.pi/2, np.pi, 3*np.pi/2])
-        wax.set_xticklabels(["0", "π/2", "±π", "-π/2"])
-        return wax
-
-        
 class Waveform(Object):
     def __init__(self, energy: float, simulation: SimulationObject, z: float, func=None, **kwargs):
         '''
@@ -315,10 +315,13 @@ class ThinLens(Aperture):
         super().__init__(simulation, z, func=aperture_func, **kwargs)
         self.aperture_field = np.array(self.field)
         
-        if self.simulation.dim == 1:
-            self.build_profile(self.grid, **kwargs)
-        else:
-            self.build_profile(*self.grid, **kwargs)
+        try:
+            if self.simulation.dim == 1:
+                self.build_profile(self.grid, **kwargs)
+            else:
+                self.build_profile(*self.grid, **kwargs)
+        except:
+            raise Exception("Warning: No thickness profile provided.")
         
         self._transmittance_initialized = False
              
@@ -352,6 +355,7 @@ class ThinLens(Aperture):
         if not self._transmittance_initialized:
             self.init_transmittance(wave)
             self._transmittance_initialized = True
+            # print("WARNING: Transmittance not initialized.")
         
         wave.field = wave.field.astype(np.complex128)*self.field
         

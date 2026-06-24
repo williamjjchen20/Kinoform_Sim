@@ -9,7 +9,7 @@ class AngularSpectrum(Propagator):
     def __init__(self, dim):
         super().__init__(angular_spectrum_method, dim=dim)
 
-def angular_spectrum_method(U: np.ndarray, z: float, simulation: SimulationObject, wavelength: float, n=1, dim=1) -> np.ndarray:
+def angular_spectrum_method(U: np.ndarray, z: float, simulation: SimulationObject, wavelength: float, n: float=1., dim: int=1) -> np.ndarray:
     '''
     Calculates the propagation of disturbance from initial wavefunction U(0) to U(z) in the specified dimensions. 
     
