@@ -26,6 +26,7 @@ def run_lens(label: str, lens_cls, simulation: SimulationObject, propagator: Pro
     
     Uses a ConstantBeam reference for fair power-in normalization.
     '''
+        
     if w0 is None:
         source = ConstantBeam(energy=E, simulation=simulation, z=0)
     else:
@@ -42,6 +43,7 @@ def run_lens(label: str, lens_cls, simulation: SimulationObject, propagator: Pro
         print(f"[{label}] WARNING: under-sampled (dx={simulation.Lx/simulation.Nx:.3e} >= f_s={f_s:.3e})")
 
     # snapshot incident wave (after aperture mask but before phase) for power_in
+    source.filter(lens)
     incident_power = total_power(source)
 
     # propagate to focal plane
@@ -51,19 +53,19 @@ def run_lens(label: str, lens_cls, simulation: SimulationObject, propagator: Pro
     return source, lens, incident_power
 
 
-def collect_metrics(focal_wave, incident_power, label):
+def collect_metrics(P_in, focal_wave, lens, label):
     I = focal_wave.intensity()
     fwhm = FWHM(focal_wave)
     I_max, I_avg = intensity_stats(focal_wave)
-    P_focal = total_power(focal_wave)
-    eff = P_focal / incident_power if incident_power > 0 else np.nan
+    P_focal = focal_power(focal_wave, radius=1.22*focal_wave.wavelength*lens.f/(2*lens.R))
+    eff = focal_efficiency(P_in, focal_wave, radius=1.22*focal_wave.wavelength*lens.f/(2*lens.R))
     return {
         "label": label,
         "FWHM [m]": fwhm,
         "I_max": I_max,
         "I_avg": I_avg,
         "P_focal": P_focal,
-        "P_incident": incident_power,
+        "P_incident": P_in,
         "focusing_efficiency": eff,
     }
 
@@ -198,7 +200,7 @@ def test_compare_xray_lenses(lens_dict, N, dim):
             label, cls, sim, propagator, E, f, R, n,
             err_func=err_func
         )
-        m = collect_metrics(source, P_in, name)
+        m = collect_metrics(P_in, source, lens, name)
         metrics.append(m)
         
         plot_labels = {

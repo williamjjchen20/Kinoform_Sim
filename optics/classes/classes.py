@@ -64,6 +64,9 @@ class SimulationObject:
     
     def add_propagator(self, propagator: Propagator):
         self.propagator = propagator
+        
+    def copy(self):
+        return SimulationObject(Lx=self.Lx, Nx=self.Nx, Lz=self.Lz, Ly=self.Ly, Ny=self.Ny, n=self.n)
             
     def view(self):
         pass
@@ -112,7 +115,7 @@ class Object():
              color="Black", labels=None, show_cbar=False, extend=False):
         
         _phase_cmap = "twilight"
-        def _view_data(self, extend):
+        def _view_data(self):
             '''
             Return (data, norm, scale, label, c_label, sm, rgb) for `view`.
             - data: scalar field for plotting (intensity / phase / field).
@@ -131,10 +134,9 @@ class Object():
                 scale = "log"
                 c_label = label
                 phase = self.phase()
-                if extend or self.simulation.dim != 2:
-                    norm = colors.LogNorm(vmin=np.min(phase),
-                                        vmax=np.max(phase)) if data.max() > 0 else colors.Normalize()
-                else:
+                
+                if self.dim != 1:
+                    c_label="Phase"
                     # domain coloring: |field| -> lightness (log), phase -> cyclic cmap
                     vmin = 1e-3*data.max() if data.max() > 0 else 0.0
                     vmax = data.max() if data.max() > 0 else 1.0
@@ -185,7 +187,7 @@ class Object():
         labels = dict(labels or {})
 
         ## decide what scalar data, norm, and colorbar mappable to use per type
-        data, norm, scale, label, c_label, sm, rgb = _view_data(self, extend)
+        data, norm, scale, label, c_label, sm, rgb = _view_data(self)
 
         x_scale_factor = labels.get("x_scale_factor", 1.0)
         y_scale_factor = labels.get("y_scale_factor", 1.0)
@@ -231,15 +233,29 @@ class Object():
                     else (X[0, :] >= xlim[0]) & (X[0, :] <= xlim[1])
                 mask_y = np.ones(Y.shape[0], dtype=bool) if ylim is None \
                     else (Y[:, 0] >= ylim[0]) & (Y[:, 0] <= ylim[1])
-                idx = np.ix_(mask_y, mask_x)
+                # downsample dense grids: per-facet coloring is slow at large N
+                stride = max(1, min(mask_x.sum(), mask_y.sum()) // 256)
+                idx = np.ix_(np.flatnonzero(mask_y)[::stride],
+                             np.flatnonzero(mask_x)[::stride])
                 Xc, Yc, Dc = X[idx], Y[idx], data[idx]
 
-                surf = ax3d.plot_surface(Xc, Yc, Dc, norm=norm, cmap=cmap)
+                if rgb is not None:
+                    # height = intensity; color = phase domain-coloring
+                    surf = ax3d.plot_surface(
+                        Xc, Yc, Dc, facecolors=rgb[idx],
+                        rstride=1, cstride=1, linewidth=0,
+                        antialiased=False, shade=False,
+                    )
+                else:
+                    surf = ax3d.plot_surface(Xc, Yc, Dc, norm=norm, cmap=cmap)
 
                 if show_cbar:
-                    cbar = fig.colorbar(surf, ax=ax3d, orientation="vertical",
+                    mappable = sm if sm is not None else surf
+                    cbar = fig.colorbar(mappable, ax=ax3d, orientation="vertical",
                                         shrink=0.7, pad=0.12)
                     cbar.set_label(c_label)
+                    if rgb is not None:
+                        _add_phase_wheel(ax3d, cmap=_phase_cmap, text_color="Black")
 
                 if xlim is not None: ax3d.set_xlim3d(*xlim)
                 if ylim is not None: ax3d.set_ylim3d(*ylim)
@@ -289,12 +305,13 @@ class Waveform(Object):
         return np.angle(field)
     
     def filter(self, aperture): #type: ignore
-        if isinstance(aperture, Aperture): 
-            self.field *= aperture.field
-        elif isinstance(aperture, ThinLens):
-            self.field *= aperture.aperture_field
-        else:
-            raise Exception()
+        match aperture:
+            case ThinLens(): 
+                self.field *= aperture.aperture_field
+            case Aperture():
+                self.field *= aperture.field
+            case _:
+                raise Exception("Invalid aperture!")
         
 class Aperture(Object):
     def __init__(self, simulation: SimulationObject, z, func=None, **kwargs):

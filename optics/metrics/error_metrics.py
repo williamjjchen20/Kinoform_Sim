@@ -68,7 +68,7 @@ def etch_error_vs_intensity(source_factory, lens_factory, propagator, error_func
             ## create reference source lens for comparison
             lens = lens_factory(source, wavelength=ref_source.wavelength)
             source.filter(lens)
-            source_in = source
+            P_in = total_power(source)
             
             lens.add_error(error_func, **{mag_name: float(e)}, **error_kwargs)
             lens.init_transmittance(source)
@@ -76,7 +76,7 @@ def etch_error_vs_intensity(source_factory, lens_factory, propagator, error_func
             source.propagate(lens.f, propagator)
 
             Imax, _ = intensity_stats(source)
-            P_eff[i] = focal_efficiency(wave_in=source, wave_out=source_in, radius=1.22*source.wavelength*lens.f/(2*lens.R))
+            P_eff[i] = focal_efficiency(P_in=P_in, wave_out=source, radius=1.22*source.wavelength*lens.f/(2*lens.R))
             try:
                 fwhm[i] = FWHM(source)
             except Exception:

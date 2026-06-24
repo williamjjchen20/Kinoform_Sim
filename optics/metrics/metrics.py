@@ -123,16 +123,17 @@ def focal_power(wave: Waveform, radius):
         
     return P_focal
 
-def focal_efficiency(wave_in: Waveform, wave_out: Waveform, radius: float):
+def focal_efficiency(P_in, wave_out: Waveform, radius=None):
     '''
     args
     - wave_in: incident plane waveform
     - wave_out: focal plane waveform
     - radius: radius [m] in which to calculate power over
     '''
-    
-    P_in = total_power(wave_in)
-    P_focal = focal_power(wave_out, radius)
+    if radius is None:
+        P_focal = total_power(wave_out)
+    else:
+        P_focal = focal_power(wave_out, radius)
     
     return P_focal/P_in
 
