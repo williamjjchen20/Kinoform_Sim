@@ -118,7 +118,7 @@ class Kinoform(CircularLens):
     def __init__(self, wavelength, f, R, n, simulation: SimulationObject, z, **kwargs):
         self.wavelength = wavelength
         super().__init__(f, R, n, simulation, z,**kwargs)
-        self.zones = (np.sqrt(f**2+R**2)-f)/wavelength
+        self.zones = int(np.floor((np.sqrt(f**2+R**2)-f)/wavelength))
         
     def thickness(self, *args, **kwargs):
         ## Note: Bandwidth limited by requiring wavelength for a specific energy of x-ray
@@ -160,14 +160,24 @@ class LensErrors():
         return profile , errors
     
     @staticmethod
-    def random_etch(lens: ThinLens, max_err: float, interval: int = 0, seed=None):
+    def random_etch(lens: ThinLens, max_err: float, interval: int = 0, distribution_func="uniform", seed=None):
         if seed is None: seed = 0
         rng = np.random.default_rng(seed)
         
         errors = np.zeros_like(lens.profile)
         aperture_mask = lens.aperture_field > 0
         aperture_idx = np.flatnonzero(aperture_mask.ravel())
-        random_vals = rng.uniform(low=-max_err, high=max_err, size=lens.profile.size)
+        
+        match distribution_func:
+            case "gaussian":
+                random_vals = max_err*rng.normal(size=lens.profile.size)
+            case "cauchy":
+                random_vals = max_err*rng.standard_cauchy(size=lens.profile.size)
+            case "exponential":
+                random_vals = max_err*rng.standard_exponential(size=lens.profile.size)
+            case _:
+                random_vals = rng.uniform(low=-max_err, high=max_err, size=lens.profile.size)
+                
         
         count = len(aperture_idx)//interval
         etched_idx = rng.choice(aperture_idx, size=count, replace=False)
@@ -181,6 +191,35 @@ class LensErrors():
         elif np.all(lens.profile <= 0): profile[profile > 0] = 0
         else: pass
         return profile, errors
+    
+    @staticmethod
+    def gaussian_etch(lens: CircularLens, max_err:float, invert=False, seed=None):
+        '''
+        Generates error distributed over circular lens aperture according to a Gaussian distribution
+        '''
+        
+        if seed is None: seed = 0
+        rng = np.random.default_rng(seed)
+        
+        ## 3 sigma within aperture
+        sigma = lens.R/3
+        if lens.dim == 1:
+            x = lens.grid
+            r_squared = x**2
+        else:
+            X, Y = lens.grid
+            r_squared = X**2+Y**2
+       
+        distribution = 1/np.sqrt(2*const.pi*sigma**2)*np.exp(-r_squared/(2*sigma**2))
+        err = rng.uniform(low=-max_err, high=max_err, size=np.shape(lens.profile))
+        errors = distribution*err
+        
+        profile = lens.profile + errors
+        if np.all(lens.profile >= 0): profile[profile < 0] = 0
+        elif np.all(lens.profile <= 0): profile[profile > 0] = 0
+        else: pass
+        return profile, errors
+        
     
     @staticmethod
     def kinoform_taper(kinoform: Kinoform, m: int | np.ndarray, proportion: float | np.ndarray, direction: str ="out", extend=False, remove_last=False):

@@ -67,7 +67,7 @@ class SimulationObject:
         
     def copy(self):
         return SimulationObject(Lx=self.Lx, Nx=self.Nx, Lz=self.Lz, Ly=self.Ly, Ny=self.Ny, n=self.n)
-            
+    
     def view(self):
         pass
             
