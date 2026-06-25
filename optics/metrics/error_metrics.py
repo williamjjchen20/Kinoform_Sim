@@ -205,7 +205,7 @@ def plot_sweep(err, vals, labels, savepath):
     print(f"Saved sweep figure to {savepath}.")
 
 def main():
-    Lx, Lz, N = 1.5e-4, 10000, 2048
+    Lx, Lz, N = 1.5e-4, 10000, 1024
     # SIM = {"Lx": Lx, "Ly": Lx, "Nx": N, "Ny": N, "Lz": Lz}
     E, f, R = 8.5e3, 1.0, 5e-5
     dim = 2
@@ -292,8 +292,9 @@ def main():
     ### Constant Taper
     match input("Analyze constant taper? (y/n): "):
         case "y": 
-            err_values = np.linspace(0.1, 1.0, 9)
-            m = 3
+            err_values = np.linspace(0, 1.0, 10)
+            m = ref_lens.zones
+            
             labels = {
                     "xlabel": [r"Taper Proportion"] * n_metrics,
                     "ylabel": ["Focal Efficiency", "Strehl Ratio"],
@@ -302,7 +303,7 @@ def main():
                     "x_scale_factor":  1.0,                 # m -> um
                     "y_scale_factor": [1.0, 1.0],     # FWHM m -> um
                     "label": [f"E={E_i/1000} keV" for E_i in E_range],
-                    "title": f"Constant Taper (m={m} outer zones) for E={E/1000} keV Kinoform",
+                    "title": f"Constant Taper (m={m} zones) for E={E/1000} keV Kinoform",
                     "marker": ["o", "^", "s", "d", "x"],
                     "color": ["red", "orange", "green", "blue", "purple"]
                 }
@@ -312,7 +313,7 @@ def main():
                 LensErrors.kinoform_taper, "proportion", err_values,
                 E_range=E_range,
                 labels=labels,
-                error_kwargs={"m": -m, "extend": True, "remove_last": True},
+                error_kwargs={"m": -m, "extend": True, "remove_last": False},
                 savepath=out,
             )
         case _:

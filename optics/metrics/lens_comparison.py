@@ -96,8 +96,8 @@ def plot_comparison_1D(results, savepath):
     if n_lenses == 0: raise Exception("No lenses added.")
 
     fig, ax = plt.subplots(
-        nrows=n_lenses, ncols=2,
-        figsize=(8, 3.0 * n_lenses),
+        nrows=n_lenses, ncols=3,
+        figsize=(12, 3.0 * n_lenses),
         squeeze=False,
         constrained_layout=True,
     )
@@ -105,17 +105,15 @@ def plot_comparison_1D(results, savepath):
     cmap_cycle = plt.get_cmap("tab10")
 
     for i, (name, (wave, lens, labels)) in enumerate(results.items()):
-        prof_fig, prof_ax = plt.subplots()
 
-        lens.plot_profile(ax=prof_ax, savedir=savedir, labels=labels)
-        plt.close(prof_fig)
+        lens.plot_profile(ax=ax[i, 0], savedir=savedir, labels=labels)
         
         ## Lens phase plot
-        lens_ax = lens.view(ax=ax[i, 0], color=cmap_cycle(i%10))
+        lens_ax = lens.view(ax=ax[i, 1], color=cmap_cycle(i%10))
         lens_ax.set(title=f"{name} Lens Phase")
 
         ## Wave intensity slice plot
-        wave_ax = wave.view(ax=ax[i, 1], color=cmap_cycle(i%10))
+        wave_ax = wave.view(ax=ax[i, 2], color=cmap_cycle(i%10))
         wave_ax.set(title=f"{name} Focal Intensity")
 
     fig.savefig(savepath)
@@ -133,8 +131,8 @@ def plot_comparison_2D(results, savepath):
     if n_lenses == 0: raise Exception("No lenses added.")
 
     fig, ax = plt.subplots(
-        nrows=n_lenses, ncols=3,
-        figsize=(17, 5.0 * n_lenses),
+        nrows=n_lenses, ncols=4,
+        figsize=(24, 5.0 * n_lenses),
         squeeze=False,
         constrained_layout=True,
     )
@@ -142,18 +140,17 @@ def plot_comparison_2D(results, savepath):
     cmap_cycle = plt.get_cmap("tab10")
 
     for i, (name, (wave, lens, labels)) in enumerate(results.items()):
-        prof_fig, prof_ax = plt.subplots()
+        # prof_fig, prof_ax = plt.subplots()
         
-        lens.plot_profile(ax=prof_ax, savedir=savedir, labels=labels)
-        plt.close(prof_fig)
+        lens.plot_profile(ax=ax[i, 0], labels=labels)
         
         ## Lens phase plot
-        lens_ax = lens.view(ax=ax[i, 0], cmap="twilight", labels=labels, show_cbar=True)
+        lens_ax = lens.view(ax=ax[i, 1], cmap="twilight", labels=labels, show_cbar=True)
         lens_ax.set(title=f"{name} Lens Phase")
         
         ## Wave intensity/phase plot
-        wave_ax = wave.view(ax=ax[i, 1], cmap="inferno", xlim=(-lens.R/2, lens.R/2), ylim=(-lens.R/2, lens.R/2), 
-                            labels=labels, extend=False, show_cbar=True)
+        wave_ax = wave.view(ax=ax[i, 2], cmap="inferno", xlim=(-lens.R/2, lens.R/2), ylim=(-lens.R/2, lens.R/2), 
+                            labels=labels, extend=True, show_cbar=True)
         wave_ax.set(title=f"{name} Focal Intensity")
 
         ## Wave intensity slice plot
@@ -165,9 +162,9 @@ def plot_comparison_2D(results, savepath):
         Nx = I.shape[1]
         x = np.linspace(-Lx/2, Lx/2, Nx)
         cy = I.shape[0] // 2
-        ax[i, 2].plot(x*x_scale_factor, I[cy, :], color=cmap_cycle(i % 10))
-        ax[i, 2].set(xlim=(-lens.R/2*x_scale_factor, lens.R/2*x_scale_factor))
-        ax[i, 2].set(title=f"{name} Central Cut", xlabel=xlabel, ylabel="Intensity", yscale="log")
+        ax[i, 3].plot(x*x_scale_factor, I[cy, :], color=cmap_cycle(i % 10))
+        ax[i, 3].set(xlim=(-lens.R/2*x_scale_factor, lens.R/2*x_scale_factor))
+        ax[i, 3].set(title=f"{name} Central Cut", xlabel=xlabel, ylabel="Intensity", yscale="log")
 
     fig.savefig(savepath)
     plt.close(fig)
