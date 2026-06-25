@@ -112,9 +112,9 @@ class Object():
         self.error = error_func 
     
     def view(self, ax=None, xlim=None, ylim=None, savedir="", cmap="Greys_r",
-             color="Black", labels=None, show_cbar=False, extend=False):
+             color="Black", phase_cmap="hsv", labels=None, show_cbar=False, extend=False):
         
-        _phase_cmap = "twilight"
+        _phase_cmap = phase_cmap
         def _view_data(self):
             '''
             Return (data, norm, scale, label, c_label, sm, rgb) for `view`.
@@ -138,9 +138,9 @@ class Object():
                 if self.dim != 1:
                     c_label="Phase"
                     # domain coloring: |field| -> lightness (log), phase -> cyclic cmap
-                    vmin = 1e-3*data.max() if data.max() > 0 else 0.0
+                    vmin = 1e-4*data.max() if data.max() > 0 else 0.0
                     vmax = data.max() if data.max() > 0 else 1.0
-                    lnorm = colors.LogNorm(vmin=vmin, vmax=vmax)
+                    lnorm = colors.Normalize(vmin=vmin, vmax=vmax)
                     lv = lnorm(data)
                     v = np.clip(lv.filled(0) if hasattr(lv, "filled") else lv, 0, 1)
                     hue = (phase + np.pi) / (2*np.pi)

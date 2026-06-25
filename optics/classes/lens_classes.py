@@ -93,23 +93,11 @@ class OpticalLens(CircularLens):
         if self.simulation.dim == 2:
             Y = args[1]
             r_squared += Y**2
-        # Elements of modern x-ray physics (2001)
-        # t_parabolic = r_squared/(2*self.f*self.delta) # paraxial approximation
+        
         t_parabolic = self.t0-r_squared/2*(1/self.R1 - 1/self.R2)
     
         return t_parabolic
-        
-    # def transmittance(self, *args, wavelength, **kwargs):
-    #     X = args[0]
-    #     r_squared = X**2
-    #     k = 2*const.pi/wavelength
-        
-    #     if self.simulation.dim == 2:
-    #         Y = args[1]
-    #         r_squared += Y**2
 
-    #     t =  np.exp(-1j*k*r_squared/(2*self.f))
-    #     return t
 
 class XrayParabolicLens(CircularLens):
     def __init__(self, f, R, n, simulation: SimulationObject, z, **kwargs):
@@ -122,7 +110,6 @@ class XrayParabolicLens(CircularLens):
             Y = args[1]
             r_squared += Y**2
         # Elements of modern x-ray physics (2001)
-        # t_parabolic = r_squared/(2*self.f*self.delta) # paraxial approximation
         t_parabolic = (np.sqrt(r_squared+self.f**2)-self.f)/self.delta
     
         return t_parabolic
@@ -141,8 +128,9 @@ class Kinoform(CircularLens):
         if self.simulation.dim == 2:
             Y = args[1]
             r_squared += Y**2
-        # t_parabolic = r_squared/(2*self.f*self.delta)
+            
         t_parabolic = (np.sqrt(r_squared+self.f**2)-self.f)/self.delta
+        
         return t_parabolic % t_2pi
     
     def zone_location(self, m):
@@ -217,12 +205,13 @@ class LensErrors():
 
         # convert negative indices to positive equivalents wrt zones
         ms = np.where(ms < 0, m_total + ms, ms)
+        assert np.all(ms >= 0)
 
         if extend: 
             m_min = np.min(ms)
             ms = np.arange(m_min, m_total)
             if proportions.size != ms.size:
-                print("Extending last specified proportion...")
+                # print("Extending last specified proportion...")
                 proportions = np.append(proportions, np.ones(ms.size-proportions.size)*proportions[-1])
 
         assert (np.all(ms <= zones))
@@ -244,9 +233,7 @@ class LensErrors():
             
         profile = np.array(kinoform.profile)
         for r_in, r_out, p in (zip(r_m_in, r_m_out, proportions)):
-            # print(r_in, r_out, p)
-            # bound by lens apertue
-            # if r_out > kinoform.R: r_out = kinoform.R
+
             # cut from curved face outward
             if direction.lower() == "out":
                 r_cut = r_in + p*np.abs(r_out-r_in)
