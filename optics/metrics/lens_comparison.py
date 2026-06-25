@@ -153,7 +153,7 @@ def plot_comparison_2D(results, savepath):
         
         ## Wave intensity/phase plot
         wave_ax = wave.view(ax=ax[i, 1], cmap="inferno", xlim=(-lens.R/2, lens.R/2), ylim=(-lens.R/2, lens.R/2), 
-                            labels=labels, extend=True, show_cbar=True)
+                            labels=labels, extend=False, show_cbar=True)
         wave_ax.set(title=f"{name} Focal Intensity")
 
         ## Wave intensity slice plot
@@ -243,6 +243,7 @@ def take_user_input():
                 break
             case _:
                 raise Exception("Unknown lens type")
+        # key = input("Lens Name")
             
         # Quantization
         print("="*50)
@@ -270,7 +271,7 @@ def take_user_input():
                 m = int(input("Lateral zone to start taper (-1 is the outermost): "))
                 proportion = float(input("Proportion: "))
                 err_func = LensErrors.kinoform_taper
-                lens_dict[key].append(functools.partial(err_func, m=m, proportion=proportion, extend=True))
+                lens_dict[key].append(functools.partial(err_func, m=m, proportion=proportion, extend=True, remove_last=True))
             case "":
                 lens_dict[key].append(None)
             case _:

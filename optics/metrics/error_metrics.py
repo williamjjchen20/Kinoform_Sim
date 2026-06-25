@@ -26,7 +26,7 @@ def _error_magnitude_param(error_func):
     return params[1] if params[0] == "lens" else params[0]
 
 
-def etch_error_vs_intensity(source_factory, lens_factory, propagator, error_func,
+def etch_error_metrics(source_factory, lens_factory, propagator, error_func, sweep_param,
                             err_values, labels=None, E_range = None, error_kwargs=None, savepath=None):
     '''
     Sweep an etch error magnitude and record focal-plane intensity stats.
@@ -43,7 +43,7 @@ def etch_error_vs_intensity(source_factory, lens_factory, propagator, error_func
     Returns a dict with arrays: err, I_max, I_avg, P_focal, fwhm, strehl.
     '''
     error_kwargs = dict(error_kwargs or {})
-    mag_name = _error_magnitude_param(error_func)
+    # mag_name = _error_magnitude_param(error_func)
     err_values = np.asarray(list(err_values), dtype=float)
 
     # Reference (no-error) focal wave for Strehl normalization
@@ -70,7 +70,7 @@ def etch_error_vs_intensity(source_factory, lens_factory, propagator, error_func
             source.filter(lens)
             P_in = total_power(source)
             
-            lens.add_error(error_func, **{mag_name: float(e)}, **error_kwargs)
+            lens.add_error(error_func, **{sweep_param: float(e)}, **error_kwargs)
             lens.init_transmittance(source)
             lens.transform(source)
             source.propagate(lens.f, propagator)
@@ -83,7 +83,7 @@ def etch_error_vs_intensity(source_factory, lens_factory, propagator, error_func
                 fwhm[i] = np.nan
             strehl[i] = strehl_ratio(ref_source, source)
 
-            print(f"[{i+1}/{len(err_values)}] {mag_name}={e:.3e}  "
+            print(f"[{i+1}/{len(err_values)}] {sweep_param}={e:.3e}  "
                 f"I_max={Imax:.3e}  Strehl={strehl[i]:.3f}  "
                 f"FWHM={fwhm[i]:.3e}  P_eff={P_eff[i]:.3e}")
 
@@ -96,6 +96,73 @@ def etch_error_vs_intensity(source_factory, lens_factory, propagator, error_func
         plot_sweep(err_values, results, labels, savepath)
 
     return results
+
+def taper_metrics(source_factory, lens_factory, propagator, error_func, sweep_param,
+                            err_values, labels=None, E_range = None, error_kwargs=None, savepath=None):
+    '''
+    Sweep an etch error magnitude and record focal-plane intensity stats.
+
+    args
+    - source_factory: callable() -> fresh Waveform (with its own SimulationObject)
+    - lens_factory:   callable(source, wavelength) -> fresh ThinLens bound to that source
+    - propagator:     propagation function passed to wave.propagate
+    - error_func:     staticmethod from LensErrors (e.g. LensErrors.random_etch)
+    - err_values:     iterable of magnitudes to sweep over
+    - error_kwargs:   extra kwargs forwarded to error_func (e.g. {"count": 50, "seed": 0})
+    - savepath:       optional path to save the sweep plot
+
+    Returns a dict with specified metric fields.
+    '''
+    error_kwargs = dict(error_kwargs or {})
+    err_values = np.asarray(list(err_values), dtype=float)
+
+    # Reference (no-error) focal wave for Strehl normalization
+    ref_source = source_factory()
+    ref_lens = lens_factory(ref_source)
+    ref_lens.init_transmittance(ref_source)
+    ref_lens.transform(ref_source)
+    ref_source.propagate(ref_lens.f, propagator)
+
+    results = []
+    if E_range is None: E_range = [ref_source.energy]
+
+    for E_off in E_range:
+        print("="*50)
+        print("E [eV]:", E_off)
+        P_eff = np.zeros_like(err_values)
+        strehl = np.zeros_like(err_values)
+
+        for i, e in enumerate(err_values):
+            source = source_factory(E=E_off)
+            ## create reference source lens for comparison
+            lens = lens_factory(source, wavelength=ref_source.wavelength)
+            source.filter(lens)
+            P_in = total_power(source)
+            
+            lens.add_error(error_func, **{sweep_param: float(e)}, **error_kwargs)
+            lens.init_transmittance(source)
+            lens.transform(source)
+            source.propagate(lens.f, propagator)
+
+            Imax, _ = intensity_stats(source)
+            P_eff[i] = focal_efficiency(P_in=P_in, wave_out=source, radius=1.22*source.wavelength*lens.f/(2*lens.R))
+            fwhm = FWHM(source)
+            strehl[i] = strehl_ratio(ref_source, source)
+
+            print(f"[{i+1}/{len(err_values)}] {sweep_param}={e:.3e}  "
+                f"I_max={Imax:.3e}  Strehl={strehl[i]:.3f}  "
+                f"FWHM={fwhm:.3e}  P_eff={P_eff[i]:.3e}")
+
+        result = [P_eff, strehl]
+        results.append(result)
+
+    if savepath is not None:
+        if labels is None:
+            labels = {}
+        plot_sweep(err_values, results, labels, savepath)
+
+    return results
+
     
 def plot_sweep(err, vals, labels, savepath):
     if not isinstance(vals, list): vals = [vals]
@@ -157,56 +224,130 @@ def main():
         if wavelength is None: wavelength = src.wavelength
         return Kinoform(wavelength=wavelength, f=f, R=R, n=n,
                         simulation=src.simulation, z=0)
+    
+    ## Initialize reference parameters
+    ref_source = source_factory()
+    ref_lens = lens_factory(ref_source)
         
-    ### Random etch error
-    err_values = np.linspace(0, 5e-6, 12)
     E_range = np.linspace(0.9*E, 1.1*E, 3)
     n_metrics = 3
     
-    labels = {
-            "xlabel": [r"Maximum Etch Error $[\mu m]$"] * n_metrics,
-            "ylabel": ["Focal Efficiency", r"FWHM $[\mu m]$", "Strehl Ratio"],
-            "xscale": ["linear"] * n_metrics,
-            "yscale": ["linear", "linear", "linear"],
-            "x_scale_factor":  1e6,                 # m -> um
-            "y_scale_factor": [1.0, 1e6, 1.0],     # FWHM m -> um
-            "label": [f"E={E_i/1000} keV" for E_i in E_range],
-            "title": f"Random Etch for E={E/1000} keV Kinoform",
-            "marker": ["o", "^", "s", "d", "x"],
-            "color": ["red", "orange", "green", "blue", "purple"]
-        }
-    out = savedir / "etch_error_vs_intensity_random.png"
-    etch_error_vs_intensity(
-        source_factory, lens_factory, propagator,
-        LensErrors.random_etch, err_values,
-        E_range=E_range,
-        labels=labels,
-        error_kwargs={"interval": 3, "seed": 42},
-        savepath=out,
-    )
+    # Random etch error
+    match input("Analyze random etch? (y/n): "):
+        case "y": 
+            err_values = np.linspace(0, 5e-6, 12)
+            labels = {
+                    "xlabel": [r"Maximum Etch Depth $[\mu m]$"] * n_metrics,
+                    "ylabel": ["Focal Efficiency", r"FWHM $[\mu m]$", "Strehl Ratio"],
+                    "xscale": ["linear"] * n_metrics,
+                    "yscale": ["linear", "linear", "linear"],
+                    "x_scale_factor":  1e6,                 # m -> um
+                    "y_scale_factor": [1.0, 1e6, 1.0],     # FWHM m -> um
+                    "label": [f"E={E_i/1000} keV" for E_i in E_range],
+                    "title": f"Random Etch for E={E/1000} keV Kinoform",
+                    "marker": ["o", "^", "s", "d", "x"],
+                    "color": ["red", "orange", "green", "blue", "purple"]
+                }
+            out = savedir / "etch_error_vs_intensity_random.png"
+            etch_error_metrics(
+                source_factory, lens_factory, propagator,
+                LensErrors.random_etch, "max_err", err_values,
+                E_range=E_range,
+                labels=labels,
+                error_kwargs={"interval": 3, "seed": 42},
+                savepath=out,
+            )
+        case _:
+            print("Skipping random etch.")
     
-    err_values = -np.linspace(0, 2.5e-6, 12)
-    labels = {
-            "xlabel": [r"Maximum Etch Error $[\mu m]$"] * n_metrics,
-            "ylabel": ["Focal Efficiency", r"FWHM $[\mu m]$", "Strehl Ratio"],
-            "xscale": ["linear"] * n_metrics,
-            "yscale": ["linear", "linear", "linear"],
-            "x_scale_factor":  -1e6,                 # m -> um
-            "y_scale_factor": [1.0, 1e6, 1.0],     # FWHM m -> um
-            "label": [f"E={E_i/1000} keV" for E_i in E_range],
-            "title": f"Periodic Etch for E={E/1000} keV Kinoform",
-            "marker": ["o", "^", "s", "d", "x"],
-            "color": ["red", "orange", "green", "blue", "purple"]
-        }
-    out = savedir / "etch_error_vs_intensity_periodic.png"
-    etch_error_vs_intensity(
-        source_factory, lens_factory, propagator,
-        LensErrors.periodic_etch, err_values,
-        E_range=E_range,
-        labels=labels,
-        error_kwargs={"interval": 3},
-        savepath=out,
-    )
+    ### Periodic etch error
+    match input("Analyze periodic etch? (y/n): "):
+        case "y": 
+            err_values = -np.linspace(0, 2.5e-6, 12)
+            labels = {
+                    "xlabel": [r"Etch Depth $[\mu m]$"] * n_metrics,
+                    "ylabel": ["Focal Efficiency", r"FWHM $[\mu m]$", "Strehl Ratio"],
+                    "xscale": ["linear"] * n_metrics,
+                    "yscale": ["linear", "linear", "linear"],
+                    "x_scale_factor":  -1e6,                 # m -> um
+                    "y_scale_factor": [1.0, 1e6, 1.0],     # FWHM m -> um
+                    "label": [f"E={E_i/1000} keV" for E_i in E_range],
+                    "title": f"Periodic Etch for E={E/1000} keV Kinoform",
+                    "marker": ["o", "^", "s", "d", "x"],
+                    "color": ["red", "orange", "green", "blue", "purple"]
+                }
+            out = savedir / "etch_error_vs_intensity_periodic.png"
+            etch_error_metrics(
+                source_factory, lens_factory, propagator,
+                LensErrors.periodic_etch, "err", err_values,
+                E_range=E_range,
+                labels=labels,
+                error_kwargs={"interval": 3},
+                savepath=out,
+            )
+        case _:
+            print("Skipping periodic etch.")
+            
+    n_metrics = 2
+    ### Constant Taper
+    match input("Analyze constant taper? (y/n): "):
+        case "y": 
+            err_values = np.linspace(0.1, 1.0, 9)
+            m = 3
+            labels = {
+                    "xlabel": [r"Taper Proportion"] * n_metrics,
+                    "ylabel": ["Focal Efficiency", "Strehl Ratio"],
+                    "xscale": ["linear"] * n_metrics,
+                    "yscale": ["linear", "linear"],
+                    "x_scale_factor":  1.0,                 # m -> um
+                    "y_scale_factor": [1.0, 1.0],     # FWHM m -> um
+                    "label": [f"E={E_i/1000} keV" for E_i in E_range],
+                    "title": f"Constant Taper (m={m} outer zones) for E={E/1000} keV Kinoform",
+                    "marker": ["o", "^", "s", "d", "x"],
+                    "color": ["red", "orange", "green", "blue", "purple"]
+                }
+            out = savedir / "taper_proportion_vs_intensity_periodic.png"
+            taper_metrics(
+                source_factory, lens_factory, propagator,
+                LensErrors.kinoform_taper, "proportion", err_values,
+                E_range=E_range,
+                labels=labels,
+                error_kwargs={"m": -m, "extend": True, "remove_last": True},
+                savepath=out,
+            )
+        case _:
+            print("Skipping constant taper.")
+            
+    match input("Analyze gradual taper? (y/n): "):
+        case "y": 
+            zones = ref_lens.zones
+            err_values = np.arange(0, int(np.ceil(zones)))
+            p = 0.2
+            
+            labels = {
+                    "xlabel": [r"Initial Taper Zone #"] * n_metrics,
+                    "ylabel": ["Focal Efficiency", "Strehl Ratio"],
+                    "xscale": ["linear"] * n_metrics,
+                    "yscale": ["linear", "linear"],
+                    "x_scale_factor":  1.0,                 # m -> um
+                    "y_scale_factor": [1.0, 1.0],     # FWHM m -> um
+                    "label": [f"E={E_i/1000} keV" for E_i in E_range],
+                    "title": f"Gradual Taper (p={p}) for E={E/1000} keV Kinoform",
+                    "marker": ["o", "^", "s", "d", "x"],
+                    "color": ["red", "orange", "green", "blue", "purple"]
+                }
+            out = savedir / "taper_number_vs_intensity_periodic.png"
+            taper_metrics(
+                source_factory, lens_factory, propagator,
+                LensErrors.kinoform_taper, "m", err_values,
+                E_range=E_range,
+                labels=labels,
+                error_kwargs={"proportion": p,  "extend": True, "remove_last": False},
+                savepath=out,
+            )
+        case _:
+            print("Skipping gradual taper.")
+      
     
 if __name__ == "__main__":
     main()
