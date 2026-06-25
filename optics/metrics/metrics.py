@@ -21,44 +21,31 @@ def FWHM(wave: Waveform):
         # Take the right side of the peak (or left, doesn't matter for symmetric)
         right = I[peak_idx:]
         x_right = X[peak_idx:]
-
-        # Interpolate to find half-max crossing
-        # Find first crossing below half-max
-        cross_idx = np.where(right <= I_half)[0]
-        if len(cross_idx) == 0:
-            return np.nan
-        j = cross_idx[0]
-
-        # Linear interpolation between j-1 and j
-        r_half = np.interp(I_half, 
-                           [right[j], right[j-1]],  # reversed: decreasing I
-                           [x_right[j], x_right[j-1]])
-        return 2 * abs(r_half - x_peak)
-
     else:
         X, Y = wave.grid
         peak_idx = np.unravel_index(np.argmax(I), I.shape)
         x_peak = X[peak_idx]
-        y_peak = Y[peak_idx]
 
-        # Extract a 1D slice through the peak (e.g., horizontal)
+        # Extract a 1D horizontal slice through the peak
         row = I[peak_idx[0], :]
         x_row = X[peak_idx[0], :]
 
-        # Right side of peak
         j_peak = peak_idx[1]
         right = row[j_peak:]
         x_right = x_row[j_peak:]
 
-        cross_idx = np.where(right <= I_half)[0]
-        if len(cross_idx) == 0:
-            return np.nan
-        j = cross_idx[0]
+    # Find first crossing at/below half-max
+    cross_idx = np.where(right <= I_half)[0]
+    if len(cross_idx) == 0 or cross_idx[0] == 0:
+        return np.nan
+    j = cross_idx[0]
 
-        r_half = np.interp(I_half,
-                           [right[j], right[j-1]],
-                           [x_right[j], x_right[j-1]])
-        return 2 * abs(r_half - x_right[0])
+    # Linear interpolation between samples j-1 (above) and j (below) half-max.
+    # `right` is decreasing here, so we can't use np.interp directly.
+    y0, y1 = right[j-1], right[j]
+    x0, x1 = x_right[j-1], x_right[j]
+    r_half = x0 + (I_half - y0) * (x1 - x0) / (y1 - y0)
+    return 2 * abs(r_half - x_peak)
 
 def intensity_stats(wave: Waveform):
     '''
@@ -71,9 +58,7 @@ def intensity_stats(wave: Waveform):
     '''
     I = wave.intensity()
     I_max = np.max(I)
-    
-    mask = I != 0
-    I_avg = np.mean(I[mask])
+    I_avg = np.mean(I)
     
     return I_max, I_avg
 
@@ -103,7 +88,8 @@ def focal_power(wave: Waveform, radius):
     if wave.dim == 1:
         X = wave.grid
         
-        xc = np.argmax(I)
+        peak = np.argmax(I)
+        xc = X[peak]
         R = np.abs(X-xc)
         
         I_masked = np.where(R <= radius, I, 0.0)

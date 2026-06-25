@@ -46,15 +46,11 @@ def etch_error_metrics(source_factory, lens_factory, propagator, error_func, swe
     # mag_name = _error_magnitude_param(error_func)
     err_values = np.asarray(list(err_values), dtype=float)
 
-    # Reference (no-error) focal wave for Strehl normalization
-    ref_source = source_factory()
-    ref_lens = lens_factory(ref_source)
-    ref_lens.init_transmittance(ref_source)
-    ref_lens.transform(ref_source)
-    ref_source.propagate(ref_lens.f, propagator)
+    # Design-energy reference (used only to fix the lens wavelength)
+    design_source = source_factory()
 
     results = []
-    if E_range is None: E_range = [ref_source.energy]
+    if E_range is None: E_range = [design_source.energy]
 
     for E_off in E_range:
         print("="*50)
@@ -63,10 +59,19 @@ def etch_error_metrics(source_factory, lens_factory, propagator, error_func, swe
         fwhm  = np.zeros_like(err_values)
         strehl = np.zeros_like(err_values)
 
+        # Per-energy ideal reference: design-wavelength lens, no errors,
+        # illuminated by an off-energy source. Defines Strehl=1 at err=0.
+        ref_source = source_factory(E=E_off)
+        ref_lens = lens_factory(ref_source, wavelength=design_source.wavelength)
+        ref_source.filter(ref_lens)
+        ref_lens.init_transmittance(ref_source)
+        ref_lens.transform(ref_source)
+        ref_source.propagate(ref_lens.f, propagator)
+
         for i, e in enumerate(err_values):
             source = source_factory(E=E_off)
-            ## create reference source lens for comparison
-            lens = lens_factory(source, wavelength=ref_source.wavelength)
+            ## lens designed for the design energy, illuminated at E_off
+            lens = lens_factory(source, wavelength=design_source.wavelength)
             source.filter(lens)
             P_in = total_power(source)
             
@@ -116,15 +121,11 @@ def taper_metrics(source_factory, lens_factory, propagator, error_func, sweep_pa
     error_kwargs = dict(error_kwargs or {})
     err_values = np.asarray(list(err_values), dtype=float)
 
-    # Reference (no-error) focal wave for Strehl normalization
-    ref_source = source_factory()
-    ref_lens = lens_factory(ref_source)
-    ref_lens.init_transmittance(ref_source)
-    ref_lens.transform(ref_source)
-    ref_source.propagate(ref_lens.f, propagator)
+    # Design-energy reference (used only to fix the lens wavelength)
+    design_source = source_factory()
 
     results = []
-    if E_range is None: E_range = [ref_source.energy]
+    if E_range is None: E_range = [design_source.energy]
 
     for E_off in E_range:
         print("="*50)
@@ -132,10 +133,19 @@ def taper_metrics(source_factory, lens_factory, propagator, error_func, sweep_pa
         P_eff = np.zeros_like(err_values)
         strehl = np.zeros_like(err_values)
 
+        # Per-energy ideal reference: design-wavelength lens, no errors,
+        # illuminated by an off-energy source. Defines Strehl=1 at err=0.
+        ref_source = source_factory(E=E_off)
+        ref_lens = lens_factory(ref_source, wavelength=design_source.wavelength)
+        ref_source.filter(ref_lens)
+        ref_lens.init_transmittance(ref_source)
+        ref_lens.transform(ref_source)
+        ref_source.propagate(ref_lens.f, propagator)
+
         for i, e in enumerate(err_values):
             source = source_factory(E=E_off)
-            ## create reference source lens for comparison
-            lens = lens_factory(source, wavelength=ref_source.wavelength)
+            ## lens designed for the design energy, illuminated at E_off
+            lens = lens_factory(source, wavelength=design_source.wavelength)
             source.filter(lens)
             P_in = total_power(source)
             
@@ -207,7 +217,7 @@ def plot_sweep(err, vals, labels, savepath):
 def main():
     Lx, Lz, N = 1.5e-4, 10000, 1024
     # SIM = {"Lx": Lx, "Ly": Lx, "Nx": N, "Ny": N, "Lz": Lz}
-    E, f, R = 8.5e3, 1.0, 5e-5
+    E, f, R = 8.e3, 1.0, 5e-5
     dim = 2
     
     n = xrl.Refractive_Index("Si", E / 1000, 2.329)
@@ -229,7 +239,7 @@ def main():
     ref_source = source_factory()
     ref_lens = lens_factory(ref_source)
         
-    E_range = np.linspace(0.9*E, 1.1*E, 3)
+    E_range = np.linspace(0.99*E, 1.01*E, 3)
     n_metrics = 3
     
     # Random etch error

@@ -113,9 +113,9 @@ def test_kinoform_taper(proportion):
     print(f"Saved etched kinoform profile to {out}.")
     
 if __name__ == "__main__":
-    # max_err = 4e-7
-    # test_kinoform_etch(max_err)
-    # test_kinoform_random_etch(max_err)
+    max_err = 4e-7
+    test_kinoform_etch(max_err)
+    test_kinoform_random_etch(max_err)
     
     taper_proportion = 0.5
     test_kinoform_taper(taper_proportion)

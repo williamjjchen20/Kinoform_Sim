@@ -131,10 +131,10 @@ def test_standard_lens_2D():
 def test_lens_xray():
     print("Testing Parabolic Lens (X-ray)...")
     Lx, Ly, Lz = 1.5e-4, 1.5e-4, 10000
-    N = 5000
+    N = 1024
 
     # parameters for simulation
-    E = 8.5e3       # eV
+    E = 8.e3       # eV
     f = 1.          # m
     R = 5e-5
     n = xrl.Refractive_Index("Si", E/1000, 2.329)
@@ -202,7 +202,7 @@ def test_kinoform():
     N = 1024
 
     # parameters for simulation
-    E = 8.5e3       # eV
+    E = 8.e3       # eV
     f = 1.          # m
     R = 5e-5
     n = xrl.Refractive_Index("Si", E/1000, 2.329)
@@ -263,8 +263,8 @@ def test_kinoform():
     plt.savefig(os.path.join(savedir, "Kinoform_Lens"))
 
 if __name__ == "__main__":
-    # test_standard_lens_2D()
-    # test_standard_lens_1D()
-    # test_lens_xray()
+    test_standard_lens_2D()
+    test_standard_lens_1D()
+    test_lens_xray()
     test_kinoform()
     

@@ -210,7 +210,8 @@ class LensErrors():
             X, Y = lens.grid
             r_squared = X**2+Y**2
        
-        distribution = 1/np.sqrt(2*const.pi*sigma**2)*np.exp(-r_squared/(2*sigma**2))
+        distribution = np.exp(-r_squared/(2*sigma**2))
+        if invert: distribution = 1.-distribution
         err = rng.uniform(low=-max_err, high=max_err, size=np.shape(lens.profile))
         errors = distribution*err
         
