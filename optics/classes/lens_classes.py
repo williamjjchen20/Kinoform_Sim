@@ -118,7 +118,7 @@ class Kinoform(CircularLens):
     def __init__(self, wavelength, f, R, n, simulation: SimulationObject, z, **kwargs):
         self.wavelength = wavelength
         super().__init__(f, R, n, simulation, z,**kwargs)
-        self.zones = int(np.floor((np.sqrt(f**2+R**2)-f)/wavelength))
+        self.zones = (np.sqrt(f**2+R**2)-f)/wavelength
         
     def thickness(self, *args, **kwargs):
         ## Note: Bandwidth limited by requiring wavelength for a specific energy of x-ray
@@ -226,63 +226,68 @@ class LensErrors():
     def kinoform_taper(kinoform: Kinoform, m: int | np.ndarray, proportion: float | np.ndarray, direction: str ="out", extend=False, remove_last=False):
         '''
         Adds a taper by a specified percentage on a specified lateral zone
-        
-        args 
+
+        args
         - kinoform: Kinoform lens
-        - m: lateral zone number
+        - m: lateral zone number (negative indices count back from the last band)
         - proportion: radius proportion tapered off (>=0. & <= 1.)
-        
+
         kwargs
-        - direction: inward "in" or outward "out from the specified zone 
-        - extend: taper all zones m' >= m 
+        - direction: inward "in" or outward "out" from the specified zone
+        - extend: taper all zones m' >= m
+        - remove_last: also remove the trailing partial zone (band that the
+          aperture clips). Equivalent to extending the sweep through m_total-1
+          with proportion=1.
         '''
         zones = kinoform.zones
+        # number of zone bands, including the trailing partial one inside R
         m_total = int(np.ceil(zones))
-        if isinstance(m, int): ms = np.array([m])
+        if isinstance(m, (int, float)): ms = np.array([m])
         else: ms = np.asarray(m)
-        if isinstance(proportion, float): proportions = np.array([proportion])
+        if isinstance(proportion, (int, float)): proportions = np.array([proportion])
         else: proportions = np.asarray(proportion)
-
-        # convert negative indices to positive equivalents wrt zones
+        
+        # convert negative indices to positive equivalents wrt zone bands
         ms = np.where(ms < 0, m_total + ms, ms)
-        assert np.all(ms >= 0)
+        assert np.all((ms >= 0) & (ms < m_total)), f"m must be in [0, {m_total})"
 
-        if extend: 
-            m_min = np.min(ms)
+        if extend:
+            m_min = int(np.min(ms))
             ms = np.arange(m_min, m_total)
             if proportions.size != ms.size:
-                # print("Extending last specified proportion...")
-                proportions = np.append(proportions, np.ones(ms.size-proportions.size)*proportions[-1])
+                proportions = np.append(proportions,
+                                        np.full(ms.size - proportions.size, proportions[-1]))
 
-        assert (np.all(ms <= zones))
-        assert (len(proportions) == len(ms)), "proportions must match m in length (or be scalar)"
-    
+        # ensure the partial last band is fully removed if requested
+        if remove_last and not extend:
+            ms = np.append(ms, m_total - 1)
+            proportions = np.append(proportions, 1.0)
+
+        print(ms, proportions)
+        assert len(proportions) == len(ms), "proportions must match m in length (or be scalar)"
+
+        # band radii, clipped at the physical aperture so the partial zone is handled correctly
         r_m_in = kinoform.zone_location(ms)
-        r_m_out = kinoform.zone_location(ms+1)
+        r_m_out = np.minimum(kinoform.zone_location(ms + 1), kinoform.R)
 
         if kinoform.dim == 1:
             r = np.abs(kinoform.grid)
         else:
             X, Y = kinoform.grid
             r = np.sqrt(X**2 + Y**2)
-            
-        if remove_last: 
-            r_m_in = np.insert(r_m_in, -1, kinoform.zone_location(int(np.floor(zones))))
-            r_m_out = np.insert(r_m_out, -1, kinoform.zone_location(int(np.ceil(zones))))
-            proportions = np.insert(proportions, -1, 1.)
-            
-        profile = np.array(kinoform.profile)
-        for r_in, r_out, p in (zip(r_m_in, r_m_out, proportions)):
 
-            # cut from curved face outward
+        profile = np.array(kinoform.profile)
+        for r_in, r_out, p in zip(r_m_in, r_m_out, proportions):
+            width = r_out - r_in
+            if width <= 0: continue   # band lies entirely outside the aperture
             if direction.lower() == "out":
-                r_cut = r_in + p*np.abs(r_out-r_in)
+                r_cut = r_in + p*width
                 mask = (r < r_cut) & (r >= r_in)
-            # cut from vertical face inward
             elif direction.lower() == "in":
-                r_cut = r_out - p*np.abs(r_out-r_in) 
+                r_cut = r_out - p*width
                 mask = (r < r_out) & (r >= r_cut)
-                
+            else:
+                raise ValueError(f"direction must be 'in' or 'out', got {direction!r}")
             profile[mask] = 0.
-        
+
         return profile, None
