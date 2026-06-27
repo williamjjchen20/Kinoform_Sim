@@ -250,7 +250,7 @@ def main():
             out = savedir / "taper_proportion_vs_intensity_periodic.png"
             error_metrics(
                 source_factory, lens_factory, propagator,
-                LensErrors.kinoform_taper, "proportion", err_values,
+                LensErrors.zone_removal, "proportion", err_values,
                 metrics=("P_eff", "Strehl"),
                 E_range=E_range,
                 labels=labels,
@@ -281,11 +281,11 @@ def main():
             out = savedir / "taper_number_vs_intensity_periodic.png"
             error_metrics(
                 source_factory, lens_factory, propagator,
-                LensErrors.kinoform_taper, "m", err_values,
+                LensErrors.zone_removal, "m", err_values,
                 metrics=("P_eff", "Strehl"),
                 E_range=E_range,
                 labels=labels,
-                error_kwargs={"proportion": p,  "extend": False, "remove_last": False},
+                error_kwargs={"proportion": p,  "extend": False, "remove_last": True},
                 savepath=out,
             )
         case _:
