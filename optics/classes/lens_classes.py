@@ -9,17 +9,22 @@ from .aperture_classes import ApertureFunctions
 
 class CircularLens(ThinLens):
     def __init__(self, f, R, n, simulation: SimulationObject, z, **kwargs):
-        # assert np.isclose(d/np.abs(R1), 0.) and np.isclose(d/np.abs(R2), 0.)
         self.R = R
         self.delta = (1.-n).real
         
         F = ApertureFunctions()
         if simulation.dim == 2:
+            assert R <= simulation.Lx/2 and R <= simulation.Ly/2 #type: ignore
             aperture_func = lambda X, Y, r=R, **kw: F.circular_mask(X, Y, r=r)
         else:
+            assert R <= simulation.Lx/2
             aperture_func = lambda X, r=R, **kw: F.single_slit_1D(X, r=r)
         super().__init__(f, aperture_func, simulation, z, thickness_func=None, n=n, **kwargs)
         
+    def reset(self, R_orig):
+        self.R = R_orig
+        super().reset()
+            
     def plot_profile(self, ax=None, savedir="", labels=None):
         '''
         Plot the side profile (thickness vs. x) of the lens from
@@ -118,8 +123,8 @@ class Kinoform(CircularLens):
     def __init__(self, wavelength, f, R, n, simulation: SimulationObject, z, **kwargs):
         self.wavelength = wavelength
         super().__init__(f, R, n, simulation, z,**kwargs)
-        self.height = wavelength/self.delta
         self.zones = (np.sqrt(f**2+R**2)-f)/wavelength
+        self.zone_locations = self.zone_location(wavelength, f, R, np.arange(int(np.ceil(self.zones)+1)))
         
     def thickness(self, *args, **kwargs):
         ## Note: Bandwidth limited by requiring wavelength for a specific energy of x-ray
@@ -134,13 +139,18 @@ class Kinoform(CircularLens):
         
         return t_parabolic % t_2pi
     
-    def zone_location(self, m):
-        return np.sqrt(2*m*self.f*self.wavelength + (m*self.wavelength)**2)
+    def mth_zone(self, m):
+        return self.zone_locations[m]
+    
+    @staticmethod
+    def zone_location(wavelength, f, R, m):
+        zone_locations = np.sqrt(2*m*f*wavelength + (m*wavelength)**2)
+        return np.clip(zone_locations, 0, R)
     
 class LensErrors():
     '''
-    Takes in a lens of 'Lens' class and returns the lens profile including the error added (not mutable)
-    Returns updated lens profile and the errors
+    Takes in a lens of 'Lens' class and returns the lens profile including the error added
+    Returns updated lens and errors
     '''
     @staticmethod
     def periodic_etch(lens: ThinLens, err: float, interval: int = 1):
@@ -158,10 +168,11 @@ class LensErrors():
         if np.all(lens.profile >= 0): profile[profile < 0] = 0
         elif np.all(lens.profile <= 0): profile[profile > 0] = 0
         else: pass
+        
         return profile, errors
     
     @staticmethod
-    def random_etch(lens: ThinLens, max_err: float, interval: int = 0, distribution_func=None, seed=None):
+    def random_etch(lens: ThinLens, max_err: float, interval: int = 0, distribution_func=None, seed=None) -> tuple[np.ndarray, np.ndarray | None]:
         if seed is None: seed = 0
         rng = np.random.default_rng(seed)
         
@@ -194,7 +205,7 @@ class LensErrors():
         return profile, errors
     
     @staticmethod
-    def gaussian_etch(lens: CircularLens, max_err:float, invert=False, seed=None):
+    def gaussian_etch(lens: CircularLens, max_err:float, invert=False, seed=None) -> tuple[np.ndarray, np.ndarray | None]:
         '''
         Generates error distributed over circular lens aperture according to a Gaussian distribution
         '''
@@ -223,7 +234,7 @@ class LensErrors():
         return profile, errors
     
     @staticmethod
-    def zone_placement(kinoform: Kinoform, err: float | np.ndarray, gap=False, seed=None):
+    def zone_placement(kinoform: Kinoform, err: float | np.ndarray, gap=False, mutable=True) -> tuple[np.ndarray, np.ndarray | None]:
         '''
         Shift zone boundaries by a cumulative placement error of size `err` per
         zone, rebuild the parabolic profile so each sample's thickness is
@@ -236,9 +247,9 @@ class LensErrors():
         m_total = int(np.ceil(kinoform.zones))
         # cumulative per-zone shift: eps[m] is applied to outer boundary r_m[m]
         eps = np.arange(m_total) * err # for zones 1 to m
-        print(eps)
+        # print(eps)
 
-        r_m = kinoform.zone_location(np.arange(m_total+1))
+        r_m = kinoform.zone_locations
         # r_m[1:] += eps
         r_in, r_out = r_m[:-1], r_m[1:]
         
@@ -250,7 +261,17 @@ class LensErrors():
         
         shifted_outer = r_out + eps # cumulative errors
         zone_idx = np.clip(np.searchsorted(shifted_outer, r, side="right"), 0, m_total - 1)
-        h_in  = (np.sqrt(r_in[zone_idx]**2 + f**2) - f) / delta
+        h_in  = (np.sqrt(r_in[zone_idx]**2 + f**2) - f) / delta #advanced indexing
+        
+        ### New kinoform features
+        if mutable:
+            print("Warning: Mutating original aperture profile...")
+            R_new = kinoform.R + eps[-1]
+            kinoform_new = Kinoform(kinoform.wavelength, kinoform.f, R_new, n=kinoform.n, simulation=kinoform.simulation.copy(), z=kinoform.z, **kinoform.kwargs)    
+            kinoform.R = R_new
+            # kinoform.aperture = kinoform_new.aperture
+            kinoform.aperture_field = kinoform_new.aperture_field
+            kinoform.zone_locations = np.insert(shifted_outer, 0, 0.)
         
         if gap:            
             r_effective = r - eps[zone_idx]
@@ -262,11 +283,11 @@ class LensErrors():
         else:
             t_parabolic = (np.sqrt(r**2 + f**2) - f) / delta
             profile = (t_parabolic - h_in) * (kinoform.aperture_field > 0)
-
+        
         return profile, eps    
     
     @staticmethod
-    def zone_removal(kinoform: Kinoform, m: int | np.ndarray, proportion: float | np.ndarray, direction: str ="out", extend=False, remove_last=False):
+    def zone_removal(kinoform: Kinoform, m: int | np.ndarray, proportion: float | np.ndarray, direction: str ="out", extend=False, remove_last=False) -> tuple[np.ndarray, np.ndarray | None]:
         '''
         Adds a taper by a specified percentage on a specified lateral zone
 
@@ -310,8 +331,8 @@ class LensErrors():
         assert len(proportions) == len(ms), "proportions must match m in length (or be scalar)"
 
         # band radii, clipped at the physical aperture so the partial zone is handled correctly
-        r_m_in = kinoform.zone_location(ms)
-        r_m_out = np.minimum(kinoform.zone_location(ms + 1), kinoform.R)
+        r_m_in = kinoform.zone_locations[:-1]#kinoform.zone_location(ms)
+        r_m_out = kinoform.zone_locations[1:]#np.minimum(kinoform.zone_location(ms + 1), kinoform.R)
 
         if kinoform.dim == 1:
             r = np.abs(kinoform.grid)
@@ -337,4 +358,4 @@ class LensErrors():
     
     @staticmethod
     def sidewall_tapering(kinoform):
-        pass
+        return None

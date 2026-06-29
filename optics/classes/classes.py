@@ -333,20 +333,13 @@ class ThinLens(Aperture):
         '''
         self.f = f
         self.n = n
-        self.aperture = aperture_func
-        if thickness_func is not None: self.thickness = thickness_func # type: ignore
+        self.orig_aperture = aperture_func
           
         super().__init__(simulation, z, func=aperture_func, **kwargs)
         self.aperture_field = np.array(self.field)
         
-        try:
-            if self.simulation.dim == 1:
-                self.build_profile(self.grid, **kwargs)
-            else:
-                self.build_profile(*self.grid, **kwargs)
-        except:
-            raise Exception("Warning: No thickness profile provided.")
-        
+        if thickness_func is not None: self.thickness = thickness_func
+        self.build_profile(**kwargs)        
         self._transmittance_initialized = False
              
     def __repr__(self):
@@ -356,9 +349,17 @@ class ThinLens(Aperture):
     def thickness(self, *args, **kwargs):
         raise NotImplementedError("Lens must have a thickness profile!")
     
-    def build_profile(self, *args, **kwargs):
-        self.profile = self.aperture_field * self.thickness(*args, **kwargs)
-        self.orig_profile=np.array(self.profile)
+    def build_profile(self, **kwargs):
+        try:
+            if self.simulation.dim == 1:
+                t = self.thickness(self.grid, **kwargs)
+            else:
+                t = self.thickness(**self.grid, **kwargs)
+        except:
+            print("Warning: Invalid/no thickness profile provided.")
+            
+        self.profile = self.aperture_field * t
+        # self.orig_profile=np.array(self.profile)
         
     ## transmittance features
     def transmittance(self, wavelength):
@@ -379,18 +380,18 @@ class ThinLens(Aperture):
         if not self._transmittance_initialized:
             self.init_transmittance(wave)
             self._transmittance_initialized = True
-            # print("WARNING: Transmittance not initialized.")
-        
+
         wave.field = wave.field.astype(np.complex128)*self.field
     
+    ## error functions
     def add_error(self, error_func, **kwargs):
         profile, err = error_func(self, **kwargs)
         self.profile = profile
         return err
         
     def reset(self):
-        self.profile = self.orig_profile
-        self.field = self.aperture_field
+        super().__init__(self.simulation, self.z, func=self.orig_aperture, **self.kwargs)
+        self.build_profile(**self.kwargs)        
         self._transmittance_initialized = False
         
     ## plotting
