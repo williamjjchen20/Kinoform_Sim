@@ -263,13 +263,7 @@ class LensErrors():
             t_parabolic = (np.sqrt(r**2 + f**2) - f) / delta
             profile = (t_parabolic - h_in) * (kinoform.aperture_field > 0)
 
-        return profile, eps
-    
-    @staticmethod
-    def sidewall_tapering(kinoform):
-        pass
-    
-    
+        return profile, eps    
     
     @staticmethod
     def zone_removal(kinoform: Kinoform, m: int | np.ndarray, proportion: float | np.ndarray, direction: str ="out", extend=False, remove_last=False):
@@ -330,13 +324,17 @@ class LensErrors():
             width = r_out - r_in
             if width <= 0: continue   # band lies entirely outside the aperture
             if direction.lower() == "out":
-                r_cut = r_in + p*width
+                r_cut = r_in + p#*width
                 mask = (r < r_cut) & (r >= r_in)
             elif direction.lower() == "in":
-                r_cut = r_out - p*width
+                r_cut = r_out - p#*width
                 mask = (r < r_out) & (r >= r_cut)
             else:
                 raise ValueError(f"direction must be 'in' or 'out', got {direction!r}")
             profile[mask] = 0.
 
         return profile, None
+    
+    @staticmethod
+    def sidewall_tapering(kinoform):
+        pass

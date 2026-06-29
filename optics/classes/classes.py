@@ -382,15 +382,6 @@ class ThinLens(Aperture):
             # print("WARNING: Transmittance not initialized.")
         
         wave.field = wave.field.astype(np.complex128)*self.field
-        
-    ## errors and approximations
-    def quantization(self, N: int):
-        '''
-        args 
-        - N: quantization steps
-        '''
-        
-        return
     
     def add_error(self, error_func, **kwargs):
         profile, err = error_func(self, **kwargs)

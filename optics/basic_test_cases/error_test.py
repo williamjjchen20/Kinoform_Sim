@@ -160,7 +160,7 @@ def test_zone_placement(max_err):
     lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n,
                     simulation=simulation, z=0)
 
-    lens.add_error(LensErrors.zone_placement, err=max_err, gap=True, seed=67)
+    err = lens.add_error(LensErrors.zone_placement, err=max_err, gap=True, seed=67)
 
     fig, ax = plt.subplots(figsize=(8, 4))
     x = lens.grid
@@ -186,7 +186,7 @@ if __name__ == "__main__":
     # test_kinoform_random_etch(max_err)
     # test_gaussian_etch(max_err)
     # test_gaussian_etch(max_err, invert=True)
-    # test_zone_removal(0.1)
+    # test_zone_removal(1e-6)
     test_zone_placement(1e-6)
 
     
