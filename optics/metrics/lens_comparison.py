@@ -16,6 +16,10 @@ savedir = (script_dir / "./test_figs").resolve()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-N", type=int, required=True)
+parser.add_argument("--dim", type=int, choices=[1, 2], default=2,
+                    help="simulation dimensionality (1 or 2)")
+parser.add_argument("--extend", action="store_true",
+                    help="render 2D focal/lens views as 3D surfaces")
 
 def run_lens(label: str, lens_cls, simulation: SimulationObject, propagator: Propagator, 
              E: float, f: float, R: float, n: float | complex, 
@@ -24,6 +28,7 @@ def run_lens(label: str, lens_cls, simulation: SimulationObject, propagator: Pro
     Initializes a source, applies a lens of class `lens_cls`, propagates to
     the focal plane, and returns (incident_wave, focal_wave, lens).
     
+    `err_func` may be a single callable or a list of callables applied in order.
     Uses a ConstantBeam reference for fair power-in normalization.
     '''
         
@@ -34,7 +39,8 @@ def run_lens(label: str, lens_cls, simulation: SimulationObject, propagator: Pro
 
     lens = lens_cls(f=f, R=R, n=n, wavelength=source.wavelength, simulation=simulation, z=0)
     if err_func is not None:
-        err = lens.add_error(err_func)
+        for ef in (err_func if isinstance(err_func, (list, tuple)) else [err_func]):
+            lens.add_error(ef)
     lens.init_transmittance(source)
 
     # Sampling check
@@ -68,7 +74,6 @@ def collect_metrics(P_in, focal_wave, lens, label):
         "P_incident": P_in,
         "focusing_efficiency": eff,
     }
-
 
 def print_comparison(metrics_list):
     keys = ["FWHM [m]", "I_max", "I_avg", "P_focal", "P_incident", "focusing_efficiency"]
@@ -119,7 +124,7 @@ def plot_comparison_1D(results, savepath):
     fig.savefig(savepath)
     plt.close(fig)
 
-def plot_comparison_2D(results, savepath):
+def plot_comparison_2D(results, savepath, extend=False):
     '''
     Plot lens phase, focal-plane intensity (log), and central line cut for an
     arbitrary set of lenses.
@@ -150,7 +155,7 @@ def plot_comparison_2D(results, savepath):
         
         ## Wave intensity/phase plot
         wave_ax = wave.view(ax=ax[i, 2], cmap="inferno", xlim=(-lens.R/2, lens.R/2), ylim=(-lens.R/2, lens.R/2), 
-                            labels=labels, extend=False, show_cbar=True)
+                            labels=labels, extend=extend, show_cbar=True)
         wave_ax.set(title=f"{name} Focal Intensity")
 
         ## Wave intensity slice plot
@@ -169,15 +174,14 @@ def plot_comparison_2D(results, savepath):
     fig.savefig(savepath)
     plt.close(fig)
 
-def test_compare_xray_lenses(lens_dict, N, dim):
+def test_compare_xray_lenses(lens_dict, N, dim, extend=False):
     print("Comparing Lenses...")
     
     # Parameters
-    N = N
     Lx = 1.5e-4
     Ly = 1.5e-4 if dim == 2 else None
     Lz = 10000
-    E = 8.5e3       # eV
+    E = 8e3       # eV
     f = 1.0         # m
     R = 5e-5        # m
     n = xrl.Refractive_Index("Si", E / 1000, 2.329)
@@ -185,7 +189,7 @@ def test_compare_xray_lenses(lens_dict, N, dim):
     print(f"Refractive index n = {n}")
     print(f"Energy = {E} eV, f = {f} m, R = {R} m")
 
-    propagator = Propagator(angular_spectrum_method, dim=2)
+    propagator = Propagator(angular_spectrum_method, dim=dim)
 
     metrics = []
     results = {}
@@ -217,84 +221,98 @@ def test_compare_xray_lenses(lens_dict, N, dim):
         out = os.path.join(savedir, "Metrics_Lens_Comparison_1D.png")
         plot_comparison_1D(results, out)
     else:
-        out = os.path.join(savedir, "Metrics_Lens_Comparison_3D.png")
-        plot_comparison_2D(results, out)
-        
+        suffix = "3D" if extend else "2D"
+        out = os.path.join(savedir, f"Metrics_Lens_Comparison_{suffix}.png")
+        plot_comparison_2D(results, out, extend=extend)
+
     print(f"Saved comparison figure to {out}")
 
 def take_user_input():
     iter_count = 1
     lens_dict = dict()
+    BAR  = "#" * 60
+    RULE = "-" * 60
+
+    print(BAR)
+    print("  Lens Comparison Setup")
+    print(BAR)
+
     while iter_count < 5:
-        print("Please input lens types to compare (Parabolic, Kinoform). ")
-        lens = input("Type of lens to add: ")
-        key = lens+str(iter_count)
-        
+        print()
+        print(f"[Lens #{iter_count}]   (blank lens type to finish)")
+        print(RULE)
+        print("  Available types: Parabolic, Kinoform")
+        lens = input("  > Lens type: ").strip()
+
         # Lens type
         match lens:
             case "Parabolic":
-                lens_dict[key] = [XrayParabolicLens]
+                lens_dict_key_cls = XrayParabolicLens
             case "Kinoform":
-                lens_dict[key] = [Kinoform]
+                lens_dict_key_cls = Kinoform
             case "":
+                print()
+                print(BAR)
+                print(f"  Done. {iter_count - 1} lens(es) configured.")
+                print(BAR)
                 break
             case _:
                 raise Exception("Unknown lens type")
-        # key = input("Lens Name")
-            
+        key = lens + str(iter_count)
+        lens_dict[key] = [lens_dict_key_cls]
+
         # Quantization
-        print("="*50)
-        print("Please specify if lens should be quantized (skip if ideal)")
-        N = input("N-level Approximation: ") 
-        lens_dict[key].append(N)
-        
-        # Error
-        print("="*50)
-        print("Please specify if error should be added (skip if ideal)")
-        err_type = input("Error Type: ")
-        match err_type:
-            case "Periodic Etch":
-                err = float(input("Error: "))
-                interval=int(input("Interval: "))
-                err_func= LensErrors.periodic_etch
-                lens_dict[key].append(functools.partial(err_func, err=err, interval=interval))
-            case "Random Etch":
-                err = float(input("Max Error: "))
-                interval=int(input("Interval: "))
-                err_func = LensErrors.random_etch
-                lens_dict[key].append(functools.partial(err_func, max_err=err, interval=interval))
-            case "Removal":
-                if lens != "Kinoform": raise Exception("Phase wrapped lens required!")
-                m = int(input("Lateral zone to start taper (-1 is the outermost): "))
-                proportion = float(input("Proportion: "))
-                err_func = LensErrors.zone_removal
-                lens_dict[key].append(functools.partial(err_func, m=m, proportion=proportion, extend=True, remove_last=True))
-            case "Taper":
-                if lens != "Kinoform": raise Exception("Phase wrapped lens required!")
-                err = float(input("Error: "))
-                err_func = LensErrors.sidewall_taper
-                lens_dict[key].append(functools.partial(err_func, err=err))
-            case "":
-                lens_dict[key].append(None)
-            case _:
-                raise Exception("Unknown error type")
-        
+        print()
+        print(f"  Quantization for {key}  (blank for ideal)")
+        N = input("  > N-level approximation: ").strip()
+        lens_dict[key].append(N if N else None)
+
+        # Errors (multiple allowed)
+        print()
+        print(f"  Errors for {key}  (blank Error Type to stop adding)")
+        print("  Available: Periodic Etch, Random Etch, Removal, Taper")
+        errs = []
+        while True:
+            err_type = input(f"  > Error #{len(errs)+1} type: ").strip()
+            match err_type:
+                case "Periodic Etch":
+                    err = float(input("      Error: "))
+                    interval = int(input("      Interval: "))
+                    errs.append(functools.partial(LensErrors.periodic_etch, err=err, interval=interval))
+                case "Random Etch":
+                    err = float(input("      Max Error: "))
+                    interval = int(input("      Interval: "))
+                    errs.append(functools.partial(LensErrors.random_etch, max_err=err, interval=interval))
+                case "Removal":
+                    if lens != "Kinoform": raise Exception("Phase wrapped lens required!")
+                    m = int(input("      Lateral zone to start taper (-1 = outermost): "))
+                    proportion = float(input("      Proportion: "))
+                    errs.append(functools.partial(LensErrors.zone_removal, m=m, proportion=proportion, extend=True, remove_last=True))
+                case "Taper":
+                    if lens != "Kinoform": raise Exception("Phase wrapped lens required!")
+                    err = float(input("      Error: "))
+                    errs.append(functools.partial(LensErrors.sidewall_taper, err=err))
+                case "":
+                    break
+                case _:
+                    raise Exception("Unknown error type")
+            print(f"    + added {err_type}")
+        lens_dict[key].append(errs if errs else None)
+
         # Complete
-        print("="*50)
-        print(f"Added {lens} Lens!")
-        print("Lens Count: ", iter_count)
-        iter_count+=1
-        print("#"*50)
-        
+        print()
+        print(RULE)
+        print(f"  Added {key}: quantization={lens_dict[key][1]}, errors={len(errs)}")
+        print(RULE)
+        iter_count += 1
+
     return lens_dict
         
 def main():
     args = parser.parse_args()
-    dim = 2
-    N = args.N
     lenses = take_user_input()
     print(lenses)
-    test_compare_xray_lenses(lenses, N, dim)
+    test_compare_xray_lenses(lenses, args.N, args.dim, extend=args.extend)
 
 if __name__ == "__main__":
     main()
