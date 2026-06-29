@@ -193,7 +193,7 @@ def test_taper(max_err):
     source = ConstantBeam(energy=E, simulation=simulation, z=0)
     lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n,
                     simulation=simulation, z=0)
-
+    
     lens.add_error(LensErrors.sidewall_taper, err=max_err)
     # print(lens.R)
     
@@ -212,9 +212,41 @@ def test_taper(max_err):
     plt.close(fig)
     print(f"Saved kinoform profile to {out}.")
     
+def test_multierror():
+    print("Testing Kinoform with taper (1D)...")
+    Lx, Lz = 1.5e-4, 10000
+    N = 10000
 
-def test_quantization():
-    pass
+    E = 8.e3
+    f = 1.0
+    R = 5e-5
+    n = xrl.Refractive_Index("Si", E / 1000, 2.329)
+
+    simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz)
+
+    source = ConstantBeam(energy=E, simulation=simulation, z=0)
+    lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n,
+                    simulation=simulation, z=0)
+    
+    lens.add_error(LensErrors.sidewall_taper, err=1e-6)
+    lens.add_error(LensErrors.cap_height, h=0.95, proportion=True)
+    lens.add_error(LensErrors.gaussian_etch, max_err=1e-7, invert=True)
+    # print(lens.R)
+    
+    fig, ax = plt.subplots(figsize=(8, 4))
+    x = lens.grid
+    mask = np.abs(x) <= lens.R
+    ax.fill_between(x[mask], 0, lens.profile[mask], color="steelblue", alpha=0.6)
+    ax.plot(x[mask], lens.profile[mask], color="navy", lw=1)
+    ax.axhline(0, color="black", lw=0.5)
+    ax.set(xlabel="x [m]", ylabel="thickness [m]",
+           title=f"Kinoform profile")
+    ax.set_xlim(-lens.R, lens.R)
+
+    out = savedir / f"Kinoform_error_profile.png"
+    fig.savefig(out)
+    plt.close(fig)
+    print(f"Saved kinoform profile to {out}.")
     
 if __name__ == "__main__":
     max_err = 5e-8
@@ -224,7 +256,8 @@ if __name__ == "__main__":
     # test_gaussian_etch(max_err, invert=True)
     # test_zone_removal(1e-6)
     # test_zone_placement(1e-6)
-    test_taper(1e-6)
+    # test_taper(1e-6)
+    test_multierror()
 
     
     

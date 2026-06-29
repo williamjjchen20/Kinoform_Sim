@@ -153,8 +153,20 @@ class LensErrors():
     Takes in a lens of 'Lens' class and returns the lens profile including the error added
     Returns updated lens and errors
     '''
+    @staticmethod 
+    def cap_height(lens: Kinoform, h: float, proportion=False) -> tuple[np.ndarray, np.ndarray | None] :
+        assert h > 0
+        height = lens.wavelength/lens.delta
+        if proportion:
+            h_max = h*height
+        
+        mask = lens.profile > h_max
+        profile = lens.profile
+        profile[mask] = h_max
+        return profile, None
+    
     @staticmethod
-    def periodic_etch(lens: ThinLens, err: float, interval: int = 1):
+    def periodic_etch(lens: ThinLens, err: float, interval: int = 1) -> tuple[np.ndarray, np.ndarray | None]:
         errors = np.zeros_like(lens.profile)
         aperture_mask = lens.aperture_field > 0
         aperture_idx = np.flatnonzero(aperture_mask.ravel())
@@ -173,7 +185,7 @@ class LensErrors():
         return profile, errors
     
     @staticmethod
-    def random_etch(lens: ThinLens, max_err: float, interval: int = 0, distribution_func=None, seed=None) -> tuple[np.ndarray, np.ndarray | None]:
+    def random_etch(lens: ThinLens, max_err: float, interval: int = 1, distribution=None, seed=None) -> tuple[np.ndarray, np.ndarray | None]:
         if seed is None: seed = 0
         rng = np.random.default_rng(seed)
         
@@ -181,7 +193,7 @@ class LensErrors():
         aperture_mask = lens.aperture_field > 0
         aperture_idx = np.flatnonzero(aperture_mask.ravel())
         
-        match distribution_func:
+        match distribution:
             case "gaussian":
                 random_vals = max_err*rng.normal(size=lens.profile.size)
             case "cauchy":
