@@ -10,6 +10,7 @@ from .aperture_classes import ApertureFunctions
 class CircularLens(ThinLens):
     def __init__(self, f, R, n, simulation: SimulationObject, z, **kwargs):
         self.R = R
+        self.R_orig = R
         self.delta = (1.-n).real
         
         F = ApertureFunctions()
@@ -21,8 +22,8 @@ class CircularLens(ThinLens):
             aperture_func = lambda X, r=R, **kw: F.single_slit_1D(X, r=r)
         super().__init__(f, aperture_func, simulation, z, thickness_func=None, n=n, **kwargs)
         
-    def reset(self, R_orig):
-        self.R = R_orig
+    def reset(self):
+        self.R = self.R_orig
         super().reset()
             
     def plot_profile(self, ax=None, savedir="", labels=None):
@@ -246,11 +247,17 @@ class LensErrors():
         ###
         m_total = int(np.ceil(kinoform.zones))
         # cumulative per-zone shift: eps[m] is applied to outer boundary r_m[m]
-        eps = np.arange(m_total) * err # for zones 1 to m
+        if isinstance(err, (int, float)): 
+            err = np.full(m_total, err)
+        else: 
+            assert (len(err) < m_total)
+            err = np.asarray(err)
+        eps = np.cumsum(err)#np.arange(m_total) * err # for zones 1 to m
+        # eps[0] = 0.
+        assert np.all(eps[:-1] <= eps[1:]) 
         # print(eps)
-
+        
         r_m = kinoform.zone_locations
-        # r_m[1:] += eps
         r_in, r_out = r_m[:-1], r_m[1:]
         
         if kinoform.dim == 1:
@@ -284,7 +291,7 @@ class LensErrors():
             t_parabolic = (np.sqrt(r**2 + f**2) - f) / delta
             profile = (t_parabolic - h_in) * (kinoform.aperture_field > 0)
         
-        return profile, eps    
+        return profile, np.insert(err, 0, 0.)    
     
     @staticmethod
     def zone_removal(kinoform: Kinoform, m: int | np.ndarray, proportion: float | np.ndarray, direction: str ="out", extend=False, remove_last=False) -> tuple[np.ndarray, np.ndarray | None]:
@@ -357,5 +364,31 @@ class LensErrors():
         return profile, None
     
     @staticmethod
-    def sidewall_tapering(kinoform):
-        return None
+    def sidewall_taper(kinoform: Kinoform, err: float | np.ndarray) -> tuple[np.ndarray, np.ndarray | None]:
+        m_total = int(np.ceil(kinoform.zones))
+        
+        errs = kinoform.add_error(LensErrors.zone_placement, err=err, **{"gap": True, "mutable": True})
+        r_start = np.array(kinoform.zone_locations)
+        r_end = r_start + errs
+        
+        if kinoform.dim == 1:
+            r = np.abs(kinoform.grid)
+        else:
+            X, Y = kinoform.grid
+            r = np.sqrt(X**2 + Y**2)
+            
+        t_2pi = kinoform.wavelength/kinoform.delta
+        zone_idx = np.clip(np.searchsorted(r_end, r, side="right"), 0, m_total - 1)
+        # r_mask = np.array([r[(r < r2) & (r >= r1)] for r1, r2 in zip(r_start, r_end)])
+        # taper = -t_2pi/(r_end[zone_idx]-r_start[zone_idx])*(r_mask[zone_idx]-r_end[zone_idx])
+        # profile=taper
+        
+        profile = kinoform.profile
+        
+        for r1, r2 in zip(r_start[1:], r_end[1:]):
+            mask = (r < r2) & (r >= r1)
+            r_mask = r[mask]
+            taper = -t_2pi/(r2-r1)*(r_mask-r2)
+            profile[mask] = taper
+                
+        return profile, errs

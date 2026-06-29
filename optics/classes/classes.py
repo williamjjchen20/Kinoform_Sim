@@ -325,7 +325,7 @@ class Aperture(Object):
         
 class ThinLens(Aperture):
     
-    def __init__(self, f, aperture_func, simulation: SimulationObject, z:float, thickness_func = None, n =1.0, **kwargs):
+    def __init__(self, f, aperture_func, simulation: SimulationObject, z:float, thickness_func=None, n=1.0, **kwargs):
         '''
         args
         - f: focal length [m]
@@ -354,9 +354,9 @@ class ThinLens(Aperture):
             if self.simulation.dim == 1:
                 t = self.thickness(self.grid, **kwargs)
             else:
-                t = self.thickness(**self.grid, **kwargs)
+                t = self.thickness(*self.grid, **kwargs)
         except:
-            print("Warning: Invalid/no thickness profile provided.")
+            raise Exception("Warning: Invalid/no thickness profile provided.")
             
         self.profile = self.aperture_field * t
         # self.orig_profile=np.array(self.profile)
