@@ -13,8 +13,9 @@ from ..classes import *
 
 script_dir = Path(__file__).resolve().parent
 savedir = (script_dir / "../test_figs/metrics").resolve()
+savedir.mkdir(parents=True, exist_ok=True)
 
-def run_lens(lens_cls, label, simulation, propagator, E, f, R, n, w0=None):
+def run_lens(lens_cls, label, simulation, propagator, E, f, R, n, w0=None, init_lens=True):
     '''
     Initializes a source, applies a lens of class `lens_cls`, propagates to
     the focal plane, and returns (incident_wave, focal_wave, lens).
@@ -26,8 +27,8 @@ def run_lens(lens_cls, label, simulation, propagator, E, f, R, n, w0=None):
     else:
         source = GaussianBeam(energy=E, simulation=simulation, z=0, w0=w0)
 
-    lens = lens_cls(f=f, R=R, n=n, simulation=simulation, z=0)
-    lens.init_transmittance(source)
+    lens = lens_cls(f=f, R=R, n=n, wavelength=source.wavelength, simulation=simulation, z=0)
+    if init_lens: lens.init_transmittance(source)
 
     # Sampling check
     f_s = source.wavelength * np.abs(lens.f) / (2 * lens.R)
@@ -166,6 +167,124 @@ def test_compare_xray_lenses():
     plot_comparison((focal_pf, lens_pf), (focal_kf, lens_kf), out)
     print(f"Saved comparison figure to {out}")
 
+def test_FWHM():
+    '''
+    Validate the FWHM metric against closed-form values for:
+      (1) 1D centered Gaussian beam       -> FWHM = w0 * sqrt(2*ln2)
+      (2) 2D centered Gaussian beam       -> same
+      (3) 2D off-center Gaussian beam     -> same; checks the 2D baseline fix
+      (4) 2D Airy disk from a uniform-aperture parabolic lens at focus
+                                          -> FWHM ~= 1.0289 * lambda*f / (2R)
+    Per-case relative error is asserted within a tolerance loose enough to
+    survive sample-spacing quantization but tight enough to catch regressions.
+    '''
+    print("Testing FWHM metric against theoretical values...")
+    print("="*72)
+    results = []
+    tol = 5e-2   # 5% relative tolerance
+
+    def record(name, measured, expected, atol=None):
+        rel = abs(measured - expected) / expected if expected else np.nan
+        ok = (rel <= tol) if atol is None else (abs(measured - expected) <= atol)
+        print(f"  {name:<40}  measured={measured:.6e}  "
+              f"expected={expected:.6e}  rel_err={rel:.3e}  "
+              f"{'PASS' if ok else 'FAIL'}")
+        results.append((name, measured, expected, rel, ok))
+        return ok
+
+    # --- (1) 1D centered Gaussian ---
+    Lx, N, w0 = 1.0e-3, 1024, 5.0e-5
+    sim1d = SimulationObject(Lx=Lx, Nx=N, Lz=1.0)
+    g1d = GaussianBeam(energy=1.96, simulation=sim1d, z=0, w0=w0)
+    expected_gauss = w0 * np.sqrt(2 * np.log(2))
+    record("1D Gaussian (centered)", FWHM(g1d), expected_gauss)
+
+    # --- (2) 2D centered Gaussian ---
+    N2 = 1024
+    sim2d = SimulationObject(Lx=Lx, Ly=Lx, Nx=N2, Ny=N2, Lz=1.0)
+    g2d = GaussianBeam(energy=1.96, simulation=sim2d, z=0, w0=w0)
+    record("2D Gaussian (centered)", FWHM(g2d), expected_gauss)
+
+    # --- (3) 2D off-center Gaussian (checks baseline subtraction) ---
+    g2d_off = GaussianBeam(energy=1.96, simulation=sim2d, z=0, w0=w0)
+    X, Y = g2d_off.grid
+    x0, y0 = 2.0e-4, -1.5e-4
+    g2d_off.field = np.exp(-((X - x0)**2 + (Y - y0)**2) / w0**2)
+    record("2D Gaussian (off-center)", FWHM(g2d_off), expected_gauss)
+
+    # --- (4) 2D Airy disk via XrayParabolicLens at its focal plane ---
+    Lx_a, N_a = 1.5e-4, 5000
+    E, f, R = 8.5e3, 1.0, 5.0e-5
+    n = xrl.Refractive_Index("Si", E / 1000, 2.329)
+    sim_airy = SimulationObject(Lx=Lx_a, Ly=Lx_a, Nx=N_a, Ny=N_a, Lz=10.0)
+    propagator = functools.partial(angular_spectrum_method, dim=2)
+
+    # sampling sanity
+    wavelength = (const.h * const.c) / (E * const.e)
+    airy_half_max = 1.0289 * wavelength * f / (2 * R)
+    dx = Lx_a / N_a
+    print(f"  [Airy] lambda={wavelength:.3e} m, expected FWHM={airy_half_max:.3e} m, "
+          f"dx={dx:.3e} m, samples_per_FWHM~{airy_half_max/dx:.2f}")
+
+    src, lens, _ = run_lens(XrayParabolicLens, "Airy", sim_airy, propagator,
+                            E, f, R, n, init_lens=False)
+    # Tolerance: sample spacing alone limits accuracy to ~dx/expected
+    airy_tol = max(5e-2, 2 * dx / airy_half_max)
+    rel = abs(FWHM(src) - airy_half_max) / airy_half_max
+    ok = rel <= airy_tol
+    print(f"  {'2D Airy disk (parabolic lens)':<40}  measured={FWHM(src):.6e}  "
+          f"expected={airy_half_max:.6e}  rel_err={rel:.3e}  "
+          f"tol={airy_tol:.2e}  {'PASS' if ok else 'FAIL'}")
+    results.append(("2D Airy disk", FWHM(src), airy_half_max, rel, ok))
+
+    # --- diagnostic plot: line cuts with measured & expected half-max marked ---
+    fig, ax = plt.subplots(1, 3, figsize=(15, 4), constrained_layout=True)
+
+    # 1D Gaussian cut
+    x_g = g1d.grid
+    I_g = g1d.intensity()
+    ax[0].plot(x_g, I_g / I_g.max(), color="navy", label="|U|^2 / max")
+    ax[0].axhline(0.5, color="gray", lw=0.5, ls="--")
+    ax[0].axvspan(-expected_gauss/2, expected_gauss/2, color="crimson", alpha=0.15,
+                  label=f"expected FWHM={expected_gauss:.2e}")
+    ax[0].set(title="1D Gaussian", xlabel="x [m]", ylabel="I/I_max",
+              xlim=(-3*w0, 3*w0))
+    ax[0].legend(fontsize=8)
+
+    # 2D Gaussian center row
+    I2 = g2d.intensity()
+    x2 = np.linspace(-Lx/2, Lx/2, N2)
+    cy = I2.shape[0] // 2
+    ax[1].plot(x2, I2[cy, :] / I2.max(), color="navy")
+    ax[1].axhline(0.5, color="gray", lw=0.5, ls="--")
+    ax[1].axvspan(-expected_gauss/2, expected_gauss/2, color="crimson", alpha=0.15)
+    ax[1].set(title="2D Gaussian (center row)", xlabel="x [m]",
+              xlim=(-3*w0, 3*w0))
+
+    # Airy disk center row
+    I_a = src.intensity()
+    x_a = np.linspace(-Lx_a/2, Lx_a/2, N_a)
+    cy_a = I_a.shape[0] // 2
+    ax[2].plot(x_a, I_a[cy_a, :]/I_a.max(), color="navy")
+    ax[2].axhline(0.5, color="gray", lw=0.5, ls="--")
+    ax[2].axvspan(-airy_half_max/2, airy_half_max/2, color="crimson", alpha=0.15,
+                  label=f"expected FWHM={airy_half_max:.2e}")
+    ax[2].set(title="2D Airy disk (center row)", xlabel="x [m]",
+              xlim=(-5*airy_half_max, 5*airy_half_max))
+    ax[2].legend(fontsize=8)
+
+    out = os.path.join(savedir, "FWHM_validation.png")
+    fig.savefig(out)
+    plt.close(fig)
+    print(f"  Saved diagnostic plot to {out}")
+
+    # summary
+    n_pass = sum(1 for r in results if r[-1])
+    print("="*72)
+    print(f"FWHM test: {n_pass}/{len(results)} cases passed")
+    assert n_pass == len(results), "FWHM test failures (see log above)"
+
 
 if __name__ == "__main__":
-    test_compare_xray_lenses()
+    test_FWHM()
+    # test_compare_xray_lenses()

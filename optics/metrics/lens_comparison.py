@@ -54,7 +54,7 @@ def run_lens(label: str, lens_cls, simulation: SimulationObject, propagator: Pro
 
     # propagate to focal plane
     lens.transform(source)
-    source.propagate(lens.f, propagator.propagator)
+    source.propagate(lens.f, propagator)
 
     return source, lens, incident_power
 

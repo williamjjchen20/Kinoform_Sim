@@ -5,6 +5,8 @@ import matplotlib.colors as colors
 from matplotlib import cm
 import scipy.constants as const
 import functools, os
+from abc import abstractmethod
+
 
 __all__ = ["SimulationObject", "Propagator", "Waveform", "Aperture", "ThinLens"]
 
@@ -12,8 +14,13 @@ JOULE_TO_EV = 1/const.e
 
 class Propagator():
     def __init__(self, propagation_func, dim):
+        self.dim=dim
         self.propagator = functools.partial(propagation_func, dim=dim)
-
+        self.validated=False
+    @abstractmethod
+    def _conditions(self):
+        pass
+        
 class SimulationObject:
     
     def __init__(self, Lx, Nx, Lz, Ly=None, Ny=None, n=1):
@@ -286,12 +293,14 @@ class Waveform(Object):
     def __repr__(self):
         return f"{self.simulation.dim}-D Waveform with energy {self.energy:.3e} eV at {self.center}"
         
-    def propagate(self, z, propagation_func):
+    def propagate(self, z, propagator: Propagator):
         if z+self.z > self.simulation.Lz: 
             print(f"Propagation must stay within box length {self.simulation.Lz}")
             diff = z+self.z - self.simulation.Lz
             z = diff
             print(f"Propagating for {z}.")
+        propagation_func = propagator.propagator
+
         U = propagation_func(self.field, z, self.simulation, self.wavelength)
         self.field = U
         self.z += z
@@ -378,8 +387,9 @@ class ThinLens(Aperture):
         
     def transform(self, wave: Waveform):
         if not self._transmittance_initialized:
-            self.init_transmittance(wave)
-            self._transmittance_initialized = True
+            print("Warning: Treating lens as aperture...")
+            # self.init_transmittance(wave)
+            # self._transmittance_initialized = True
 
         wave.field = wave.field.astype(np.complex128)*self.field
     
@@ -399,6 +409,7 @@ class ThinLens(Aperture):
         field = np.where(self.field != 0, self.field, 0.)
         return np.angle(field)
         
+    @abstractmethod
     def plot_profile(self):
         raise NotImplementedError
     

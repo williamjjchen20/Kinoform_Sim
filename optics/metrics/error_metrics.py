@@ -14,18 +14,6 @@ script_dir = Path(__file__).resolve().parent
 savedir = (script_dir / "./results").resolve()
 savedir.mkdir(parents=True, exist_ok=True)
     
-
-def _error_magnitude_param(error_func):
-    '''
-    Inspect a LensErrors function and return the name of its magnitude
-    parameter (the first non-`lens` positional, e.g. `err` or `max_err`).
-    '''
-    params = list(inspect.signature(error_func).parameters)
-    if not params:
-        raise ValueError("error_func has no parameters")
-    return params[1] if params[0] == "lens" else params[0]
-
-
 def error_metrics(source_factory, lens_factory, propagator, error_func, sweep_param,
                   err_values, metrics=("P_eff", "FWHM", "Strehl"),
                   labels=None, E_range=None, error_kwargs=None, savepath=None):
@@ -149,7 +137,7 @@ def main():
     dim = 2
     
     n = xrl.Refractive_Index("Si", E / 1000, 2.329)
-    propagator = functools.partial(angular_spectrum_method, dim=dim)
+    propagator = AngularSpectrum(dim=2)
 
     def source_factory(E=E) -> Waveform:
         if dim == 1:

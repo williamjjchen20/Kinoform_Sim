@@ -30,7 +30,7 @@ class DiffractionPatterns():
     
     @staticmethod
     def circular(X, Y, z=0., wavelength=6.326e-7, radius=0.5e-3):
-        DiffractionPatterns.fraunhofer_condition(radius, wavelength, z)
+        DiffractionPatterns.fraunhofer_condition(2*radius, wavelength, z)
         A = const.pi*radius**2
         k = 2*const.pi/wavelength
         r = np.sqrt(X**2+Y**2)

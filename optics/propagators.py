@@ -8,6 +8,27 @@ from .classes import SimulationObject, Waveform, Propagator
 class AngularSpectrum(Propagator):
     def __init__(self, dim):
         super().__init__(angular_spectrum_method, dim=dim)
+    
+    def _conditions(self, wave: Waveform, z, D):
+        '''
+        Nyquist sampling limit must be met.
+        
+        '''
+        wavelength = wave.wavelength
+        sim = wave.simulation
+        Lx, Ly, Nx, Ny = sim.Lx, sim.Ly, sim.Nx, sim.Ny
+        dim = self.dim
+        assert dim == sim.dim
+        
+        f_s = wavelength*np.abs(z)/D
+        if Lx/Nx > f_s: 
+            raise Exception(f"Nyquist criterion not met! Use Nx >= {np.round(Lx/f_s)}")
+        if dim == 2 and Ly/Ny > f_s: #type: ignore
+            raise Exception(f"Nyquist criterion not met! Use Ny >= {np.round(Ly/f_s)}")
+        
+        self.validated = True
+        
+        return
 
 def angular_spectrum_method(U: np.ndarray, z: float, simulation: SimulationObject, wavelength: float, n: float=1., dim: int=1) -> np.ndarray:
     '''

@@ -31,13 +31,13 @@ def plot_sideview(simulation: SimulationObject, z_max, dz):
         if i % 10 == 0: print(f"Source at z={source_z}", flush=True)
         if not lens_reached and source_z + dz >= lens_z:
             diff = lens_z - source_z
-            source.propagate(diff, propagator.propagator)
+            source.propagate(diff, propagator)
             lens.transform(source)
-            source.propagate(dz-diff, propagator.propagator)
+            source.propagate(dz-diff, propagator)
             lens_reached = True
             print("Source has reached lens")
         else:
-            source.propagate(dz, propagator.propagator)
+            source.propagate(dz, propagator)
         
         if dim == 1:
             sl = source.field

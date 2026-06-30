@@ -5,7 +5,7 @@ import matplotlib.colors as colors
 import os, functools
 from pathlib import Path
 
-from ..propagators import angular_spectrum_method
+from ..propagators import *
 from ..classes import *
 
 script_dir = Path(__file__).resolve().parent
@@ -15,44 +15,77 @@ A = DiffractionPatterns()
 
 def test_slit_aperture_1D(width):
     print("Testing 1D Single Slit Diffraction...")
-    Lx, Lz = 5*width, 100
-    N = 512
+    Lx, Lz = 5 * width, 100
+    N = 5000
     slit_width = 0.5e-3
 
     simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz)
     wave = ConstantBeam(energy=1.96, simulation=simulation, z=0)
     aperture = SingleSlit(simulation=simulation, z=1.0, width=slit_width)
+    propagator = AngularSpectrum(dim=1)
 
+    # Plot aperture transmission
     plt.figure()
-    plt.plot(aperture.grid, aperture.field) #type: ignore
+    plt.plot(aperture.grid, aperture.field)  # type: ignore
+    plt.title("Slit Aperture")
+    plt.xlabel("x [m]")
+    plt.ylabel("Transmission")
     plt.savefig(os.path.join(savedir, "Slit_Aperture_1D"))
 
-    fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(12, 4), squeeze=False, sharey=True)
-    
-    ax[0, 0].plot(wave.grid, wave.intensity(), color="Black")
-    ax[0, 0].set(title="Initial Beam (z=0 m)")
-
-    z = 0.5
+    # Propagate
+    z = 1.5
     aperture.transform(wave)
-    wave.propagate(z, functools.partial(angular_spectrum_method, dim=1))
+    wave.propagate(z, propagator)
 
-    I = wave.intensity()
-    norm = I.max()
-    ax[0, 1].plot(wave.grid, I, color="Red", ls="--", label="Simulated", zorder=10)
-    # ax[0, 1].set(yscale="log")
+    # Simulated intensity
+    I_sim = wave.intensity()
 
-    x = np.linspace(-Lx/2, Lx/2, N)
-    U = A.single_slit_1D(x, z=z, wavelength=wave.wavelength, width=slit_width)
-    I_th = np.abs(U)**2
-    I_th = I/I.max()*norm
-    ax[0, 1].plot(x, I_th, ls="-", color="Black", label="Theoretical", zorder=1)
-    ax[0, 1].set(title=f"Diffraction Pattern (z={z} m)")
-    ax[0, 1].legend()
+    # Theoretical intensity
+    x = np.linspace(-Lx / 2, Lx / 2, N)
+    U_th = A.single_slit_1D(x, z=z, wavelength=wave.wavelength, width=slit_width)
+    I_th = np.abs(U_th) ** 2
 
-    err = np.abs(wave.intensity()-I)
-    ax[0, 2].plot(err/I_th)
-    ax[0, 2].set(title="Relative Error")
-    plt.savefig(os.path.join(savedir, "1D_Constant_Diffraction"))
+    # Normalize both to their peaks
+    I_sim_norm = I_sim / I_sim.max()
+    I_th_norm = I_th / I_th.max()
+
+    # Error
+    I_th_safe = np.where(I_th_norm > 1e-10, I_th_norm, 1e-10)
+    err_abs = np.abs(I_sim_norm - I_th_norm)
+    err_rel = err_abs / I_th_safe
+
+    print(f"  Max Absolute Error (normalized): {err_abs.max():.6e}")
+    print(f"  Max Relative Error:              {err_rel.max():.6e}")
+
+    # --- Plotting ---
+    fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(14, 4))
+    plt.subplots_adjust(wspace=0.35)
+
+    # Panel 1: Linear scale overlay
+    ax[0].plot(x * 1e3, I_sim_norm, color="red", ls="--", label="Simulated", zorder=10)
+    ax[0].plot(x * 1e3, I_th_norm, color="black", ls="-", label="Theoretical", zorder=1)
+    ax[0].set(title=f"Diffraction Pattern (z={z} m)",
+              xlabel="x [mm]", ylabel="Normalized Intensity",
+              xlim=(-width * 1e3, width * 1e3))
+    ax[0].legend(fontsize=8)
+
+    # Panel 2: Log scale overlay
+    ax[1].semilogy(x * 1e3, I_sim_norm, color="red", ls="--", label="Simulated", zorder=10)
+    ax[1].semilogy(x * 1e3, I_th_norm, color="black", ls="-", label="Theoretical", zorder=1)
+    ax[1].set(title=f"Diffraction Pattern - Log (z={z} m)",
+              xlabel="x [mm]", ylabel="Normalized Intensity",
+              xlim=(-width * 1e3, width * 1e3))
+    ax[1].legend(fontsize=8)
+
+    # Panel 3: Relative error
+    ax[2].plot(x * 1e3, err_abs, color="red", linewidth=1.0)
+    ax[2].set(title="Absolute Error",
+              xlabel="x [mm]", ylabel="|Sim - Theory|",
+              xlim=(-width * 1e3, width * 1e3))
+
+    plt.savefig(os.path.join(savedir, "1D_SingleSlit_Diffraction"))
+    plt.show()
+
 
 
 def test_slit_aperture_2D(width, height):
@@ -64,6 +97,7 @@ def test_slit_aperture_2D(width, height):
     simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=N)
     wave = ConstantBeam(energy=1.96, simulation=simulation, z=0)
     aperture = SingleSlit(simulation=simulation, z=0.5, width=slit_width, height=slit_height)
+    propagator = AngularSpectrum(dim=2)
 
     plt.figure()
     plt.gca().set_facecolor("black")
@@ -81,7 +115,7 @@ def test_slit_aperture_2D(width, height):
 
     z = 0.7
     aperture.transform(wave)
-    wave.propagate(z, functools.partial(angular_spectrum_method, dim=2))
+    wave.propagate(z, propagator)
 
     norm = colors.LogNorm(vmin=5e-4, vmax=wave.intensity().max())
     ax[0, 1].imshow(wave.intensity(), norm=norm, cmap="Greys_r", extent=[-Lx/2, Lx/2, -Ly/2, Ly/2])
@@ -101,8 +135,75 @@ def test_slit_aperture_2D(width, height):
     fig.colorbar(im, ax=ax, orientation='vertical', fraction=0.02, pad=0.04, label='Intensity')
     plt.savefig(os.path.join(savedir, "2D_Constant_Diffraction"))
 
-def test_circular_aperture(width, height):
-    print("Testing Circular Aperture Diffraction...")
+def test_circular_aperture_1D(width, height):
+    print("Testing 2D Circular Aperture Diffraction (1D Central Slice)...")
+    width, height = 1.5e-4, 1.5e-4
+    Lx, Ly, Lz = 3*width, 3*height, 100
+    N = 2048
+    E = 8e3
+    slit_radius = 5e-6#0.25e-3
+
+    simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=N)
+    wave = ConstantBeam(energy=E, simulation=simulation, z=0)
+    aperture = CircularAperture(simulation=simulation, z=0.5, radius=slit_radius)
+    propagator = AngularSpectrum(dim=2)
+
+    z = 3
+    aperture.transform(wave)
+    wave.propagate(z, AngularSpectrum(dim=2))
+
+    # Simulated intensity
+    I_sim = wave.intensity()
+
+    # Theoretical intensity
+    x, y = np.linspace(-Lx/2, Lx/2, N), np.linspace(-Ly/2, Ly/2, N)
+    X, Y = np.meshgrid(x, y)
+    U = A.circular(X, Y, z=z, wavelength=wave.wavelength, radius=slit_radius)
+    I_th = np.abs(U)**2
+
+    # Central slices (horizontal, through middle row)
+    mid = N // 2
+    I_sim_slice = I_sim[mid, :]
+    I_th_slice = I_th[mid, :]
+
+    # Normalize both to their peak for shape comparison
+    I_sim_norm = I_sim_slice / I_sim_slice.max()
+    I_th_norm = I_th_slice / I_th_slice.max()
+
+    # --- Plotting ---
+    fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(16, 4))
+    plt.subplots_adjust(wspace=0.35)
+
+    # Panel 1: Linear scale overlay
+    ax[0].plot(x * 1e3, I_sim_norm, label="Simulated", linewidth=1.5)
+    ax[0].plot(x * 1e3, I_th_norm, '--', label="Theoretical", linewidth=1.5)
+    ax[0].axhline(0.5, color='gray', linestyle=':', linewidth=0.8, label="Half Max")
+    ax[0].set(title=f"Central Slice (z={z} m)",
+              xlabel="x [mm]", ylabel="Normalized Intensity",
+              xlim=(-width * 1e3, width * 1e3))
+    ax[0].legend(fontsize=8)
+
+    # Panel 2: Log scale overlay
+    ax[1].semilogy(x * 1e3, I_sim_norm, label="Simulated", linewidth=1.5)
+    ax[1].semilogy(x * 1e3, I_th_norm, '--', label="Theoretical", linewidth=1.5)
+    ax[1].set(title=f"Central Slice - Log (z={z} m)",
+              xlabel="x [mm]", ylabel="Intensity",
+              xlim=(-width * 1e3, width * 1e3))
+    ax[1].legend(fontsize=8)
+
+    # Panel 3: Residual error
+    err_slice = np.abs(I_sim_slice - I_th_slice)
+    ax[2].plot(x * 1e3, err_slice, color='red', linewidth=1.0)
+    ax[2].set(title="Absolute Error (Central Slice)",
+              xlabel="x [mm]", ylabel="|Sim - Theory|",
+              xlim=(-width * 1e3, width * 1e3))
+
+    plt.savefig(os.path.join(savedir, "Circular_Aperture_Central_Slice"))
+    plt.show()
+
+    
+def test_circular_aperture_2D(width, height):
+    print("Testing 2D Circular Aperture Diffraction...")
     Lx, Ly, Lz = 3*width, 3*height, 100
     N = 1024
     slit_radius = 0.25e-3
@@ -110,6 +211,7 @@ def test_circular_aperture(width, height):
     simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=N)
     wave = ConstantBeam(energy=1.96, simulation=simulation, z=0)
     aperture = CircularAperture(simulation=simulation, z=0.5, radius=slit_radius)
+    propagator = AngularSpectrum(dim=2)
 
     plt.figure()
     plt.gca().set_facecolor("black")
@@ -127,7 +229,7 @@ def test_circular_aperture(width, height):
 
     z = 1.0
     aperture.transform(wave)
-    wave.propagate(z, functools.partial(angular_spectrum_method, dim=2))
+    wave.propagate(z, propagator)
 
     norm = colors.LogNorm(vmin=5e-4, vmax=wave.intensity().max())
     ax[0, 1].imshow(wave.intensity(), norm=norm, cmap="Greys_r", extent=[-Lx/2, Lx/2, -Ly/2, Ly/2])
@@ -149,7 +251,6 @@ def test_circular_aperture(width, height):
     ax[0, 3].set(title="Error", xlim=(-width, width), ylim=(-height, height))
     fig.colorbar(im, ax=ax, orientation='vertical', fraction=0.02, pad=0.04, label='Intensity')
     plt.savefig(os.path.join(savedir, "Circular_Aperture_Diffraction"))
-    
 
 def test_gaussian(width, height):
     print("Testing 2D Gaussian Beam Diffraction")
@@ -160,6 +261,7 @@ def test_gaussian(width, height):
     simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=N)
     wave = GaussianBeam(energy=1.96, simulation=simulation, z=0, w0=0.5e-3)
     aperture = SingleSlit(simulation=simulation, z=0.5, width=slit_width, height=slit_height)
+    propagator = AngularSpectrum(dim=2)
 
     norm = colors.LogNorm(vmin=1e-6, vmax=wave.intensity().max())
 
@@ -168,9 +270,9 @@ def test_gaussian(width, height):
     ax[0, 0].set(title="Initial Beam (z=0 m)", xlim=(-width, width), ylim=(-height, height))
 
     z1, z2 = 0.5, 0.5
-    wave.propagate(z1, functools.partial(angular_spectrum_method, dim=2))
+    wave.propagate(z1, propagator)
     aperture.transform(wave)
-    wave.propagate(z2, functools.partial(angular_spectrum_method, dim=2))
+    wave.propagate(z2, propagator)
 
     norm = colors.LogNorm(vmin=5e-4, vmax=wave.intensity().max())
     ax[0, 1].imshow(wave.intensity(), norm=norm, cmap="Greys_r", extent=[-Lx/2, Lx/2, -Ly/2, Ly/2])
@@ -183,6 +285,6 @@ def test_gaussian(width, height):
 if __name__ == "__main__":
     width, height = 0.5e-2, 0.5e-2
     test_slit_aperture_1D(width)
-    test_slit_aperture_2D(width, height)
-    test_circular_aperture(width, height)
-    test_gaussian(width, height)
+    # test_slit_aperture_2D(width, height)
+    # test_circular_aperture_1D(width, height)
+    # test_gaussian(width, height)
