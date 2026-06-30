@@ -213,23 +213,23 @@ def test_FWHM():
     record("2D Gaussian (off-center)", FWHM(g2d_off), expected_gauss)
 
     # --- (4) 2D Airy disk via XrayParabolicLens at its focal plane ---
-    Lx_a, N_a = 1.5e-4, 5000
-    E, f, R = 8.5e3, 1.0, 5.0e-5
+    Lx_a, N_a = 1.5e-4, 2048
+    E, f, R = 8e3, 1., 5e-6
     n = xrl.Refractive_Index("Si", E / 1000, 2.329)
     sim_airy = SimulationObject(Lx=Lx_a, Ly=Lx_a, Nx=N_a, Ny=N_a, Lz=10.0)
-    propagator = functools.partial(angular_spectrum_method, dim=2)
+    propagator = AngularSpectrum(dim=2)
 
     # sampling sanity
     wavelength = (const.h * const.c) / (E * const.e)
-    airy_half_max = 1.0289 * wavelength * f / (2 * R)
+    airy_half_max = 1.029 * wavelength * f / (2 * R)
     dx = Lx_a / N_a
     print(f"  [Airy] lambda={wavelength:.3e} m, expected FWHM={airy_half_max:.3e} m, "
           f"dx={dx:.3e} m, samples_per_FWHM~{airy_half_max/dx:.2f}")
 
     src, lens, _ = run_lens(XrayParabolicLens, "Airy", sim_airy, propagator,
-                            E, f, R, n, init_lens=False)
+                            E, f, R, n, init_lens=True)
     # Tolerance: sample spacing alone limits accuracy to ~dx/expected
-    airy_tol = max(5e-2, 2 * dx / airy_half_max)
+    airy_tol = 5e-2
     rel = abs(FWHM(src) - airy_half_max) / airy_half_max
     ok = rel <= airy_tol
     print(f"  {'2D Airy disk (parabolic lens)':<40}  measured={FWHM(src):.6e}  "

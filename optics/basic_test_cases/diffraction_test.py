@@ -137,20 +137,21 @@ def test_slit_aperture_2D(width, height):
 
 def test_circular_aperture_1D(width, height):
     print("Testing 2D Circular Aperture Diffraction (1D Central Slice)...")
-    width, height = 1.5e-4, 1.5e-4
-    Lx, Ly, Lz = 3*width, 3*height, 100
-    N = 2048
+    width, height = 1.5e-3, 1.5e-3
+    Lx, Ly, Lz = width, height, 100
+    N = 5000
     E = 8e3
     slit_radius = 5e-6#0.25e-3
 
     simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=N)
     wave = ConstantBeam(energy=E, simulation=simulation, z=0)
-    aperture = CircularAperture(simulation=simulation, z=0.5, radius=slit_radius)
+    # aperture = CircularAperture(simulation=simulation, z=0.0, radius=slit_radius)
+    aperture = XrayParabolicLens(f=1.,R=slit_radius,n=1.5,simulation=simulation,z=0.)
     propagator = AngularSpectrum(dim=2)
 
-    z = 3
+    z = 1.0
     aperture.transform(wave)
-    wave.propagate(z, AngularSpectrum(dim=2))
+    wave.propagate(z, propagator)
 
     # Simulated intensity
     I_sim = wave.intensity()
@@ -284,7 +285,7 @@ def test_gaussian(width, height):
 
 if __name__ == "__main__":
     width, height = 0.5e-2, 0.5e-2
-    test_slit_aperture_1D(width)
+    # test_slit_aperture_1D(width)
     # test_slit_aperture_2D(width, height)
-    # test_circular_aperture_1D(width, height)
+    test_circular_aperture_1D(width, height)
     # test_gaussian(width, height)
