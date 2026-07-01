@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import os, sys, functools
 from pathlib import Path
 
-from ..propagators import angular_spectrum_method
+from ..propagators import *
 from ..classes import *
 from ..metrics import *
 
@@ -30,7 +30,7 @@ def test_gaussian_1D(propagation_func):
     ax[0, 0].plot(wave.grid, wave.intensity(), color="Black", alpha=0.7, label="Simulated")
     ax[0, 0].set(title="Initial Beam (z=0 m)")
 
-    wave.propagate(z, functools.partial(propagation_func, dim=1))
+    wave.propagate(z, propagation_func(simulation))
     print("Peak intensity:", np.max(wave.intensity()))
     ax[0, 1].plot(wave.grid, wave.intensity(), color="Black", label="Simulated")
 
@@ -73,7 +73,7 @@ def test_gaussian_2D(propagation_func):
     im = ax[0, 0].imshow(wave.intensity(), cmap="Greys_r", extent=[-Lx/2, Lx/2, -Ly/2, Ly/2])
     ax[0, 0].set(title="Initial Beam (z=0 m)")
 
-    wave.propagate(z, functools.partial(propagation_func, dim=2))
+    wave.propagate(z, AngularSpectrum(simulation))
     print("Peak intensity:", np.max(wave.intensity()))
     ax[0, 1].imshow(wave.intensity(), cmap="Greys_r", extent=[-Lx/2, Lx/2, -Ly/2, Ly/2])
     ax[0, 1].set(title=f"Simulated Beam (z={z:.2f} m)")
@@ -114,7 +114,7 @@ def test_constant_1D(propagation_func):
     ax[0, 0].plot(wave.grid, wave.intensity(), color="Black", alpha=0.7, label="Simulated")
     ax[0, 0].set(title="Initial Beam (z=0 m)")
 
-    wave.propagate(z, functools.partial(propagation_func, dim=1))
+    wave.propagate(z, propagation_func(simulation))
     print("Peak intensity:", np.max(wave.intensity()))
     ax[0, 1].plot(wave.grid, wave.intensity(), color="Black", label="Simulated")
 
@@ -141,6 +141,6 @@ def test_constant_1D(propagation_func):
 
 
 if __name__ == "__main__":
-    test_gaussian_1D(angular_spectrum_method)
-    test_gaussian_2D(angular_spectrum_method)
-    test_constant_1D(angular_spectrum_method)
+    # test_gaussian_1D(AngularSpectrum)
+    # test_gaussian_2D(AngularSpectrum)
+    test_constant_1D(ScaledAngularSpectrum)

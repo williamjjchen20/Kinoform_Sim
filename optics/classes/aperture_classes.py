@@ -7,7 +7,7 @@ from .classes import Aperture, SimulationObject
 class DiffractionPatterns():
     @staticmethod
     def fraunhofer_condition(D, wavelength, L):
-        if L <= D**2/wavelength: raise Exception("Fraunhofer condition violated!")
+        if L <= 0.1*D**2/wavelength: raise Exception("Fraunhofer condition violated!")
         return
     
     @staticmethod

@@ -136,20 +136,18 @@ def test_compare_xray_lenses():
     print(f"Refractive index n = {n}")
     print(f"Energy = {E} eV, f = {f} m, R = {R} m")
 
-    propagator = functools.partial(angular_spectrum_method, dim=2)
-
     # --- Parabolic ---
     sim_pf = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=N)
 
     focal_pf, lens_pf, Pin_pf = run_lens(
-        XrayParabolicLens, "Parabolic", sim_pf, propagator, E, f, R, n
+        XrayParabolicLens, "Parabolic", sim_pf, AngularSpectrum(sim_pf), E, f, R, n
     )
 
     # --- Kinoform ---
     sim_kf = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=N)
 
     focal_kf, lens_kf, Pin_kf = run_lens(
-        Kinoform, "Kinoform", sim_kf, propagator, E, f, R, n
+        Kinoform, "Kinoform", sim_kf, AngularSpectrum(sim_kf), E, f, R, n
     )
 
     # Collect & print metrics
@@ -217,7 +215,7 @@ def test_FWHM():
     E, f, R = 8e3, 1., 5e-6
     n = xrl.Refractive_Index("Si", E / 1000, 2.329)
     sim_airy = SimulationObject(Lx=Lx_a, Ly=Lx_a, Nx=N_a, Ny=N_a, Lz=10.0)
-    propagator = AngularSpectrum(dim=2)
+    propagator = AngularSpectrum(sim_airy)
 
     # sampling sanity
     wavelength = (const.h * const.c) / (E * const.e)

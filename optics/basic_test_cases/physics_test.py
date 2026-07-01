@@ -2,10 +2,10 @@ import numpy as np
 import scipy.constants as const
 import matplotlib.pyplot as plt
 import xraylib as xrl
-import os, sys, functools
+import os, sys
 from pathlib import Path
 
-from ..propagators import angular_spectrum_method
+from ..propagators import AngularSpectrum
 from ..classes import *
 from ..metrics import *
 
@@ -33,7 +33,7 @@ def test_power_conservation_freespace():
     f = 1.0
 
     sim = SimulationObject(Lx=Lx, Ly=Lx, Lz=Lz, Nx=N, Ny=N)
-    propagator = functools.partial(angular_spectrum_method, dim=2)
+    propagator = AngularSpectrum(sim)
 
     source = ConstantBeam(energy=E, simulation=sim, z=0)
     P_in = total_power(source)
@@ -58,7 +58,7 @@ def test_power_conservation_kinoform():
     n = xrl.Refractive_Index("Si", E / 1000, 2.329)
 
     sim = SimulationObject(Lx=Lx, Ly=Lx, Lz=Lz, Nx=N, Ny=N)
-    propagator = functools.partial(angular_spectrum_method, dim=2)
+    propagator = AngularSpectrum(sim)
 
     source = ConstantBeam(energy=E, simulation=sim, z=0)
     lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n,

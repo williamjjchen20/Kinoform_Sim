@@ -59,7 +59,7 @@ if __name__ == "__main__":
     n = xrl.Refractive_Index("Si", E / 1000, 2.329)
 
     sim = SimulationObject(Lx=Lx, Ly=Lx, Lz=Lz, Nx=N, Ny=N)
-    sim.add_propagator(AngularSpectrum(dim=2))
+    sim.add_propagator(AngularSpectrum(sim))
 
     source = ConstantBeam(energy=E, simulation=sim, z=0)
     lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n,

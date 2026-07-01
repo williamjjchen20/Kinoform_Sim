@@ -11,15 +11,6 @@ from abc import abstractmethod
 __all__ = ["SimulationObject", "Propagator", "Waveform", "Aperture", "ThinLens"]
 
 JOULE_TO_EV = 1/const.e
-
-class Propagator():
-    def __init__(self, propagation_func, dim):
-        self.dim=dim
-        self.propagator = functools.partial(propagation_func, dim=dim)
-        self.validated=False
-    @abstractmethod
-    def _conditions(self):
-        pass
         
 class SimulationObject:
     
@@ -68,14 +59,21 @@ class SimulationObject:
                 self.objects["aperture"] = object
             case _:
                 raise Exception("Unknown Object")
-    
-    def add_propagator(self, propagator: Propagator):
-        self.propagator = propagator
         
     def copy(self):
         return SimulationObject(Lx=self.Lx, Nx=self.Nx, Lz=self.Lz, Ly=self.Ly, Ny=self.Ny, n=self.n)
     
     def view(self):
+        pass
+    
+class Propagator():
+    def __init__(self, propagation_func, simulation: SimulationObject):
+        self.dim=simulation.dim
+        self.propagator = propagation_func
+        self.validated=False
+
+    @abstractmethod
+    def _conditions(self):
         pass
             
 class Object():
@@ -293,17 +291,17 @@ class Waveform(Object):
     def __repr__(self):
         return f"{self.simulation.dim}-D Waveform with energy {self.energy:.3e} eV at {self.center}"
         
-    def propagate(self, z, propagator: Propagator):
-        if z+self.z > self.simulation.Lz: 
+    def propagate(self, dz, propagator: Propagator):
+        if dz+self.z > self.simulation.Lz: 
             print(f"Propagation must stay within box length {self.simulation.Lz}")
-            diff = z+self.z - self.simulation.Lz
-            z = diff
-            print(f"Propagating for {z}.")
+            diff = dz+self.z - self.simulation.Lz
+            dz = diff
+            print(f"Propagating for {dz}.")
         propagation_func = propagator.propagator
 
-        U = propagation_func(self.field, z, self.simulation, self.wavelength)
+        U = propagation_func(self, dz)
         self.field = U
-        self.z += z
+        self.z += dz
         
     def intensity(self):
         I = np.abs(self.field)**2

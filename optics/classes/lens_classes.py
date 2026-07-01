@@ -104,7 +104,6 @@ class OpticalLens(CircularLens):
     
         return t_parabolic
 
-
 class XrayParabolicLens(CircularLens):
     def __init__(self, f, R, n, simulation: SimulationObject, z, **kwargs):
         super().__init__(f, R, n, simulation, z,**kwargs)
@@ -119,6 +118,32 @@ class XrayParabolicLens(CircularLens):
         t_parabolic = (np.sqrt(r_squared+self.f**2)-self.f)/self.delta
     
         return t_parabolic
+    
+class FZP(CircularLens):
+    def __init__(self, t0, wavelength, f, R, n, simulation: SimulationObject, z, **kwargs):
+        self.wavelength = wavelength
+        self.t0 = t0
+        super().__init__(f, R, n, simulation, z,**kwargs)
+        self.zones = (np.sqrt(f**2+R**2)-f)/wavelength
+        self.zone_locations = self.zone_location(wavelength, f, R, np.arange(int(np.ceil(self.zones)+1)))
+        
+    def thickness(self, *args, **kwargs):
+        X = args[0]
+        r_squared = X**2
+        t_2pi = self.wavelength/self.delta
+        if self.simulation.dim == 2:
+            Y = args[1]
+            r_squared += Y**2
+            
+        # t_parabolic = (np.sqrt(r_squared+self.f**2)-self.f)/self.delta
+        t_const = self.t0/self.delta
+        
+        return t_const % t_2pi
+
+    @staticmethod
+    def zone_location(wavelength, f, R, m):
+        zone_locations = np.sqrt(2*m*f*wavelength + (m*wavelength)**2)
+        return np.clip(zone_locations, 0, R)
         
 class Kinoform(CircularLens):
     def __init__(self, wavelength, f, R, n, simulation: SimulationObject, z, **kwargs):
@@ -390,11 +415,6 @@ class LensErrors():
             r = np.sqrt(X**2 + Y**2)
             
         t_2pi = kinoform.wavelength/kinoform.delta
-        zone_idx = np.clip(np.searchsorted(r_end, r, side="right"), 0, m_total - 1)
-        # r_mask = np.array([r[(r < r2) & (r >= r1)] for r1, r2 in zip(r_start, r_end)])
-        # taper = -t_2pi/(r_end[zone_idx]-r_start[zone_idx])*(r_mask[zone_idx]-r_end[zone_idx])
-        # profile=taper
-        
         profile = kinoform.profile
         
         for r1, r2 in zip(r_start[1:], r_end[1:]):

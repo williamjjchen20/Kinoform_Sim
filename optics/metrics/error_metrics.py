@@ -137,7 +137,6 @@ def main():
     dim = 2
     
     n = xrl.Refractive_Index("Si", E / 1000, 2.329)
-    propagator = AngularSpectrum(dim=2)
 
     def source_factory(E=E) -> Waveform:
         if dim == 1:
@@ -145,6 +144,8 @@ def main():
         else:
             sim = SimulationObject(Lx=Lx, Ly=Lx, Lz=Lz, Nx=N, Ny=N)
         return ConstantBeam(energy=E, simulation=sim, z=0)
+
+    propagator = AngularSpectrum(source_factory().simulation)
     
     def lens_factory(src, wavelength = None, f=f, R=R, n=n) -> Kinoform:
         if wavelength is None: wavelength = src.wavelength

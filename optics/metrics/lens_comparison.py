@@ -189,12 +189,11 @@ def test_compare_xray_lenses(lens_dict, N, dim, extend=False):
     print(f"Refractive index n = {n}")
     print(f"Energy = {E} eV, f = {f} m, R = {R} m")
 
-    propagator = Propagator(angular_spectrum_method, dim=dim)
-
     metrics = []
     results = {}
     for name in lens_dict:
         sim = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=N)
+        propagator = AngularSpectrum(sim)
         label = "".join([c for c in name if c.isalpha()])
         cls, n_quantized, err_func = lens_dict[name]
         source, lens, P_in = run_lens(

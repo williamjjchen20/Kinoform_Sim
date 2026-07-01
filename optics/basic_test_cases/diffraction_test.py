@@ -22,7 +22,7 @@ def test_slit_aperture_1D(width):
     simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz)
     wave = ConstantBeam(energy=1.96, simulation=simulation, z=0)
     aperture = SingleSlit(simulation=simulation, z=1.0, width=slit_width)
-    propagator = AngularSpectrum(dim=1)
+    propagator = AngularSpectrum(simulation)
 
     # Plot aperture transmission
     plt.figure()
@@ -97,7 +97,7 @@ def test_slit_aperture_2D(width, height):
     simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=N)
     wave = ConstantBeam(energy=1.96, simulation=simulation, z=0)
     aperture = SingleSlit(simulation=simulation, z=0.5, width=slit_width, height=slit_height)
-    propagator = AngularSpectrum(dim=2)
+    propagator = AngularSpectrum(simulation)
 
     plt.figure()
     plt.gca().set_facecolor("black")
@@ -147,7 +147,7 @@ def test_circular_aperture_1D(width, height):
     wave = ConstantBeam(energy=E, simulation=simulation, z=0)
     # aperture = CircularAperture(simulation=simulation, z=0.0, radius=slit_radius)
     aperture = XrayParabolicLens(f=1.,R=slit_radius,n=1.5,simulation=simulation,z=0.)
-    propagator = AngularSpectrum(dim=2)
+    propagator = AngularSpectrum(simulation)
 
     z = 1.0
     aperture.transform(wave)
@@ -212,7 +212,7 @@ def test_circular_aperture_2D(width, height):
     simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=N)
     wave = ConstantBeam(energy=1.96, simulation=simulation, z=0)
     aperture = CircularAperture(simulation=simulation, z=0.5, radius=slit_radius)
-    propagator = AngularSpectrum(dim=2)
+    propagator = AngularSpectrum(simulation)
 
     plt.figure()
     plt.gca().set_facecolor("black")
@@ -262,7 +262,7 @@ def test_gaussian(width, height):
     simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=N)
     wave = GaussianBeam(energy=1.96, simulation=simulation, z=0, w0=0.5e-3)
     aperture = SingleSlit(simulation=simulation, z=0.5, width=slit_width, height=slit_height)
-    propagator = AngularSpectrum(dim=2)
+    propagator = AngularSpectrum(simulation)
 
     norm = colors.LogNorm(vmin=1e-6, vmax=wave.intensity().max())
 

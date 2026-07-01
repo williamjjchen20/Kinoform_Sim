@@ -51,12 +51,12 @@ def test_standard_lens_1D():
     print("Initial peak I, phase:", np.max(source.intensity()), source.phase()[N//2])
     _plot(0, "Initial source (z=0)", source, ref=ref_initial)
 
-    source.propagate(z1, AngularSpectrum(dim=1))
+    source.propagate(z1, AngularSpectrum(simulation=simulation))
     print("Pre-lens peak I, phase:", np.max(source.intensity()), source.phase()[N//2])
     _plot(1, f"Pre-lens (z={z1:g} m)", source, ref=ref_pre_lens)
 
     lens.transform(source)
-    source.propagate(z2, AngularSpectrum(dim=1))
+    source.propagate(z2, AngularSpectrum(simulation=simulation))
     print("Focal peak I, phase:", np.max(source.intensity()), source.phase()[N//2])
     _plot(2, f"Focal plane (z={z1+z2:g} m)", source, ref=None)
 
@@ -71,7 +71,7 @@ def test_standard_lens_2D():
     N = 5000
 
     simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=N)
-    propagator = AngularSpectrum(dim=2)#functools.partial(angular_spectrum_method, dim=2)
+    propagator = AngularSpectrum(simulation)
 
     source = GaussianBeam(energy=1.96, simulation=simulation, z=0, w0=Lx/4)
     lens = OpticalLens(R=0.01, n=1.05, t0=0., R1=0.5, R2=-0.5, simulation=simulation, z=0.1)
@@ -141,7 +141,7 @@ def test_lens_xray():
     assert (R < Lx and R < Ly)
 
     simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=N)
-    propagator = AngularSpectrum(dim=2)# functools.partial(angular_spectrum_method, dim=2)
+    propagator = AngularSpectrum(simulation)
 
     source = ConstantBeam(energy=E, simulation=simulation, z=0)
     lens = XrayParabolicLens(f=f, R=R, n=n, simulation=simulation, z=0)
@@ -209,7 +209,7 @@ def test_kinoform():
     assert (R < Lx and R < Ly)
 
     simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=N)
-    propagator = AngularSpectrum(dim=2)#functools.partial(angular_spectrum_method, dim=2)
+    propagator = AngularSpectrum(simulation)
 
     source = ConstantBeam(energy=E, simulation=simulation, z=0)
     lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n, simulation=simulation, z=0)
