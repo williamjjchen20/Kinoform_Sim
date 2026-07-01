@@ -67,9 +67,9 @@ class SimulationObject:
         pass
     
 class Propagator():
-    def __init__(self, propagation_func, simulation: SimulationObject):
+    def __init__(self, propagation_func, simulation: SimulationObject, **kwargs):
         self.dim=simulation.dim
-        self.propagator = propagation_func
+        self.propagator = functools.partial(propagation_func, **kwargs)
         self.validated=False
 
     @abstractmethod

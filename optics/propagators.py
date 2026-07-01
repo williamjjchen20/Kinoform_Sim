@@ -31,8 +31,8 @@ class AngularSpectrum(Propagator):
         return
     
 class ScaledAngularSpectrum(Propagator):
-    def __init__(self, simulation):
-        super().__init__(scaled_angular_spectrum_method, simulation=simulation)
+    def __init__(self, simulation, Rx=1., Ry=1.):
+        super().__init__(scaled_angular_spectrum_method, simulation=simulation, Rx=Rx, Ry=Ry)
     
 
 def angular_spectrum_method(wave: Waveform, dz: float, n:float=1.) -> np.ndarray:
@@ -67,6 +67,8 @@ def angular_spectrum_method(wave: Waveform, dz: float, n:float=1.) -> np.ndarray
     Nx, Ny = simulation.Nx, simulation.Ny
     dx, dy = simulation.dx, simulation.dy
     
+    # Set input waveform to nyquist ordering (0-centered)
+    U0 = np.fft.fftshift(U)
     # Calculate the intiial angular spectrum as a FT of the initial wavefunction
     if dim == 1:
         fft = np.fft.fft
@@ -75,9 +77,10 @@ def angular_spectrum_method(wave: Waveform, dz: float, n:float=1.) -> np.ndarray
         fft = np.fft.fft2
         ifft = np.fft.ifft2
     
-    A0 = fft(U)
+    A0 = fft(U0)
     K = 2*const.pi*n/wavelength
     if dim == 1:
+        # nyquist ordering
         kx = 2*const.pi*(np.fft.fftfreq(Nx, dx))
         kz = np.sqrt((K**2 - kx**2).astype(complex))
         
@@ -107,27 +110,24 @@ def angular_spectrum_method(wave: Waveform, dz: float, n:float=1.) -> np.ndarray
     H[K_c > K**2] = 0 # evanescent waves filtered out 
     H[~band_mask] = 0 # aliasing removed 
     
-    # Calculate the propagated waveform via an inverse FT 
-    Uz = ifft(A0 * H)
+    # Calculate the propagated waveform via an inverse FT and shift back to standard ordering
+    Uz = np.fft.ifftshift(ifft(A0 * H))
     return Uz
     
 def scaled_angular_spectrum_method(wave: Waveform, dz: float, n: float=1., Rx=1., Ry=1.) -> np.ndarray:
     '''
-    Calculates the propagation of disturbance from initial wavefunction U(0) to U(z) in the specified dimensions. 
+    Scaled angular spectrum method based on Shimobaba et al. (2012), Eq. (3).
     
-    This function implements the scaled ASM which is suitable for arbitrary propagation distances. 
-    Based on Shimobaba et al. (2012).
+    Uses a standard FFT for the forward spectrum, applies the free-space
+    transfer function, then evaluates the inverse transform on a scaled
+    output grid via a type-2 NUFFT.
 
-    
     Arguments
-    - U: Initial wavefunction 
-    - z: Propagation length
-    - lambda_: wavelength
-    
-    Optional Arguments
+    - wave: Waveform object
+    - dz: propagation distance
     - n: refractive index
-    - dim: spatial dimension count (1, 2)
-    
+    - Rx, Ry: magnification factors (output grid = R * input grid)
+
     Return
     - Uz: propagated wavefunction at distance z
     '''
@@ -141,48 +141,61 @@ def scaled_angular_spectrum_method(wave: Waveform, dz: float, n: float=1., Rx=1.
     Nx, Ny = simulation.Nx, simulation.Ny
     dx, dy = simulation.dx, simulation.dy
     
+    # Set input waveform to nyquist ordering (0-centered)
+    U0 = np.fft.fftshift(U)
     K = 2*const.pi*n/wavelength
     if dim == 1:
-        fft_in = np.fft.fft
-        fft_out = nufft.nufft1d2
+        fft = np.fft.fft
+        mf = np.arange(-Nx//2, Nx//2)
+        kx = 2*const.pi * mf / (Nx*dx)
+        # standard array ordering
+        kz = np.sqrt((K**2 - kx**2).astype(complex))
         
-        W1 = Lx
-        W2 = Rx*Lx
-        phi_c = np.abs(W2-W1)/2
-        kx = 2*const.pi*np.fft.fftfreq(Nx, dx)
-        kz = np.sqrt((K**2 - kx**2 - phi_c).astype(complex))
-        
-        x_out = wave.grid
-        print(x_out)
-        x_out = x_out*(2*const.pi*Rx)/Nx
-        
-        A0 = fft_in(U)
-        H = np.exp(1j*kz*dz)
-        Az = A0 * H
-        Uz = fft_out(x_out, Az, eps=1e-8)
+        # Evanescent condition
+        K_c = kx**2
+        # Bandwidth limit
+        kx_max = 2*const.pi * 1.0/(np.sqrt((2*dz/Lx)**2+1)*wavelength)
+        band_mask = np.abs(kx) <= kx_max
     
     else: # dim = 2  
-        fft_in = np.fft.fft2
-        fft_out = nufft.nufft2d2
         assert Ly is not None and Ny is not None and dy is not None
+        fft = np.fft.fft2
+        W1, W2 = 1., 1.
+        phi_c = np.abs(W2-W1)
         
-        W1 = Lx*Ly
-        W2 = Rx*Lx*Ry*Ly
-        
-        phi_c = np.abs(W2-W1)/2
-        
-        kx = 2*const.pi*np.fft.fftfreq(Nx, dx)
-        ky = 2*const.pi*np.fft.fftfreq(Ny, dy)
+        mfx, mfy = np.arange(-Nx//2, Nx//2), np.arange(-Ny//2, Ny//2)
+        # standard array ordering
+        kx, ky = 2*const.pi * mfx / (Nx * dx), 2*const.pi * mfy / (Ny * dy)
+    
         kx, ky = np.meshgrid(kx, ky)
-        kz = np.sqrt((K**2 - kx**2 - ky**2 - phi_c).astype(complex))
+        mfx, mfy = np.meshgrid(mfx, mfy)
         
-        x_out, y_out = wave.grid
-        x_out, y_out = x_out*(2*const.pi*Rx)/Nx, y_out*(2*const.pi*Ry)/Ny
+        kz = np.sqrt((K**2 - kx**2 - ky**2).astype(complex))
         
-        A0 = fft_in(U)
-        H = np.exp(1j*kz*dz)
-        Az = A0 * H
-        Uz = fft_out(x_out, y_out, Az, eps=1e-8)
-
+        # Evanescent Condition
+        K_c = kx**2 + ky**2
+        
+        # Bandwidth Limit
+        kx_max = 2*const.pi * 1.0/(np.sqrt((2*dz/Lx)**2+1)*wavelength)
+        ky_max = 2*const.pi * 1.0/(np.sqrt((2*dz/Ly)**2+1)*wavelength)
+        band_mask = np.abs(kx) <= kx_max
+        band_mask &= np.abs(ky) <= ky_max
+    
+        
+    A0 = np.fft.ifftshift(fft(U0))
+    H = np.exp(1j*kz*dz)
+    H[K_c > K**2] = 0
+    H[~band_mask] = 0
+    Az = A0 * H
+    
+    if dim == 1:
+        x_out = 2*const.pi*Rx*mf/Nx
+        Uz = nufft.nufft1d2(x_out, Az, eps=1e-6, isign=10)/Nx
+    else: # dim == 2:
+        assert Ny is not None
+        x_out = 2*const.pi * Rx * mfx.ravel() / Nx
+        y_out = 2*const.pi * Ry * mfy.ravel() / Ny
+        Uz = nufft.nufft2d2(x_out, y_out, Az, eps=1e-6, isign=10).reshape(Ny, Nx)/(Nx * Ny)
+    
     return Uz
     
