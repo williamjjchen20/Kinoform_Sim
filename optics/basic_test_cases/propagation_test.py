@@ -57,7 +57,7 @@ def test_gaussian_1D(propagation_func):
 
 def test_gaussian_2D(propagation_func):
     print("Testing 2D Gaussian Beam...")
-    Lx, Ly, Lz = 1e-2, 1e-2, 100
+    Lx, Ly, Lz = 5e-2, 5e-2, 100
     N = 512
     z = 3.0
     w0 = 0.5e-3
@@ -72,7 +72,7 @@ def test_gaussian_2D(propagation_func):
     im = ax[0, 0].imshow(wave.intensity(), cmap="Greys_r", extent=[-Lx/2, Lx/2, -Ly/2, Ly/2])
     ax[0, 0].set(title="Initial Beam (z=0 m)")
 
-    wave.propagate(z, AngularSpectrum(simulation))
+    wave.propagate(z, propagation_func(simulation))
     print("Peak intensity:", np.max(wave.intensity()))
     ax[0, 1].imshow(wave.intensity(), cmap="Greys_r", extent=[-Lx/2, Lx/2, -Ly/2, Ly/2])
     ax[0, 1].set(title=f"Simulated Beam (z={z:.2f} m)")
@@ -189,11 +189,11 @@ def test_zoom_1D():
 
 def test_zoom_2D():
     print("Testing 2D Scaled ASM (zoom) on Gaussian Beam...")
-    Lx, Ly, Lz = 6e-2, 6e-2, 1e5
-    N = 512
-    z = 4.
+    Lx, Ly, Lz = 5e-2, 5e-2, 100
+    N = 1024
+    z = 3.
     w0 = 0.5e-3
-    Rx, Ry = 0.25, 0.25
+    Rx, Ry = 0.5, 0.5
 
     simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=N)
     wave = GaussianBeam(energy=1.96, simulation=simulation, z=0, w0=w0)
@@ -258,7 +258,7 @@ def test_zoom_2D():
 
 if __name__ == "__main__":
     # test_gaussian_1D(AngularSpectrum)
-    # test_gaussian_2D(AngularSpectrum)
+    test_gaussian_2D(AngularSpectrum)
     # test_constant_1D(ScaledAngularSpectrum)
     # test_zoom_1D()
     test_zoom_2D()

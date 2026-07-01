@@ -141,15 +141,22 @@ def scaled_angular_spectrum_method(wave: Waveform, dz: float, n: float=1., Rx=1.
     Nx, Ny = simulation.Nx, simulation.Ny
     dx, dy = simulation.dx, simulation.dy
     
+    assert Rx <= 1 and Ry <= 1 # Zoom in condition
+    
     # Set input waveform to nyquist ordering (0-centered)
     U0 = np.fft.fftshift(U)
     K = 2*const.pi*n/wavelength
     if dim == 1:
         fft = np.fft.fft
+        
+        #center shift correction
+        shiftx = np.abs(Lx-Rx*Lx)/2
+        phi_c = shiftx
+        
         mf = np.arange(-Nx//2, Nx//2)
         kx = 2*const.pi * mf / (Nx*dx)
         # standard array ordering
-        kz = np.sqrt((K**2 - kx**2).astype(complex))
+        kz = np.sqrt((K**2 - kx**2-(2*const.pi)**2*phi_c).astype(complex))
         
         # Evanescent condition
         K_c = kx**2
@@ -160,8 +167,10 @@ def scaled_angular_spectrum_method(wave: Waveform, dz: float, n: float=1., Rx=1.
     else: # dim = 2  
         assert Ly is not None and Ny is not None and dy is not None
         fft = np.fft.fft2
-        W1, W2 = 1., 1.
-        phi_c = np.abs(W2-W1)
+        
+        # center shift correction
+        shiftx, shifty = np.abs(Lx-Rx*Lx)/2, np.abs(Ly-Ry*Ly)/2
+        phi_c = shiftx+shifty
         
         mfx, mfy = np.arange(-Nx//2, Nx//2), np.arange(-Ny//2, Ny//2)
         # standard array ordering
@@ -170,7 +179,7 @@ def scaled_angular_spectrum_method(wave: Waveform, dz: float, n: float=1., Rx=1.
         kx, ky = np.meshgrid(kx, ky)
         mfx, mfy = np.meshgrid(mfx, mfy)
         
-        kz = np.sqrt((K**2 - kx**2 - ky**2).astype(complex))
+        kz = np.sqrt((K**2 - kx**2 - ky**2 - (2*const.pi)**2*phi_c).astype(complex))
         
         # Evanescent Condition
         K_c = kx**2 + ky**2
