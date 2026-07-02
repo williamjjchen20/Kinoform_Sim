@@ -97,10 +97,10 @@ class Object():
     def _build_grid(self):
         sim = self.simulation
         if sim.dim == 1:
-            self.grid = np.linspace(-sim.Lx/2, sim.Lx/2, sim.Nx)
+            self.grid = (np.arange(sim.Nx)-sim.Nx/2)*sim.dx#np.linspace(-sim.Lx/2, sim.Lx/2, sim.Nx)
         else: # dim == 2
-            x = np.linspace(-sim.Lx/2, sim.Lx/2, int(sim.Nx))
-            y = np.linspace(-sim.Ly/2, sim.Ly/2, int(sim.Ny)) #type: ignore
+            x = (np.arange(sim.Nx)-sim.Nx/2)*sim.dx
+            y = (np.arange(sim.Ny)-sim.Ny/2)*sim.dy #type: ignore
             self.grid = np.meshgrid(x, y)
             
     def _build_field(self, **kwargs):
@@ -116,10 +116,13 @@ class Object():
     def add_error(self, error_func):
         self.error = error_func 
     
-    def view(self, ax=None, xlim=None, ylim=None, savedir="", cmap="Greys_r",
-             color="Black", phase_cmap="hsv", labels=None, show_cbar=False, extend=False):
+    def view(self, ax=None, savedir="", labels: dict | None = None, show_cbar=False, extend=False, **kwargs):
         
-        _phase_cmap = phase_cmap
+        labels = dict(labels or {})
+        cmap = labels.get("cmap", "Greys_r")
+        color = labels.get("color", "Black")
+        _phase_cmap = labels.get("phase_cmap", "hsv")
+
         def _view_data(self):
             '''
             Return (data, norm, scale, label, c_label, sm, rgb) for `view`.
@@ -189,7 +192,6 @@ class Object():
         else:
             fig = ax.get_figure()
         if self.field is None: raise NotImplementedError
-        labels = dict(labels or {})
 
         ## decide what scalar data, norm, and colorbar mappable to use per type
         data, norm, scale, label, c_label, sm, rgb = _view_data(self)
@@ -199,17 +201,24 @@ class Object():
         xlabel = labels.get("xlabel", "x [m]")
         ylabel = labels.get("ylabel", "y [m]" if self.simulation.dim == 2 else label)
         title  = labels.get("title", f"{type(self).__name__} View")
+        xlim = labels.get("xlim", None)
+        ylim = labels.get("ylim", None)
 
         if xlim is not None: xlim = np.array(xlim) * x_scale_factor
         if ylim is not None: ylim = np.array(ylim) * y_scale_factor
 
         ## plotting treatments based on dimension specified
         if self.simulation.dim == 2:
+            # `extent` in `labels` overrides the default (full simulation box).
+            # Provided in unscaled units; x_scale_factor / y_scale_factor are applied here.
+            Lx, Ly = self.simulation.Lx, self.simulation.Ly
+            default_extent = [-Lx/2, Lx/2, -Ly/2, Ly/2] # type: ignore
+            raw_extent = labels.get("extent", default_extent)
+            extent = [raw_extent[0]*x_scale_factor, raw_extent[1]*x_scale_factor,
+                      raw_extent[2]*y_scale_factor, raw_extent[3]*y_scale_factor]
+            print(extent)
+
             if not extend:
-                Lx, Ly = self.simulation.Lx, self.simulation.Ly
-                assert Ly is not None 
-                extent = [-Lx/2*x_scale_factor, Lx/2*x_scale_factor,
-                          -Ly/2*y_scale_factor, Ly/2*y_scale_factor] 
                 # if we have a precomputed RGB (domain coloring), display it directly
                 im = ax.imshow(rgb if rgb is not None else data,
                                norm=None if rgb is not None else norm,
@@ -290,6 +299,9 @@ class Waveform(Object):
         
     def __repr__(self):
         return f"{self.simulation.dim}-D Waveform with energy {self.energy:.3e} eV at {self.center}"
+    
+    def copy(self):
+        return Waveform(self.energy, self.simulation.copy(), z=self.z)
         
     def propagate(self, dz, propagator: Propagator):
         if dz+self.z > self.simulation.Lz: 

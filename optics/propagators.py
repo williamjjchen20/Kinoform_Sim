@@ -144,19 +144,22 @@ def scaled_angular_spectrum_method(wave: Waveform, dz: float, n: float=1., Rx=1.
     assert Rx <= 1 and Ry <= 1 # Zoom in condition
     
     # Set input waveform to nyquist ordering (0-centered)
-    U0 = np.fft.fftshift(U)
+    U0 = np.fft.ifftshift(U)
     K = 2*const.pi*n/wavelength
     if dim == 1:
         fft = np.fft.fft
         
         #center shift correction
-        shiftx = np.abs(Lx-Rx*Lx)/2
-        phi_c = shiftx
-        
-        mf = np.arange(-Nx//2, Nx//2)
+        # shiftx = np.abs(Lx-Rx*Lx)/2
+        phi_c = 0#shiftx
+
+        mf = np.arange(Nx) - Nx//2
+   
+        print(mf.shape, mf[Nx//2])
+        print(wave.grid.shape, wave.grid[Nx//2])
         kx = 2*const.pi * mf / (Nx*dx)
         # standard array ordering
-        kz = np.sqrt((K**2 - kx**2-(2*const.pi)**2*phi_c).astype(complex))
+        kz = np.sqrt((K**2 - kx**2).astype(complex))
         
         # Evanescent condition
         K_c = kx**2
@@ -172,14 +175,14 @@ def scaled_angular_spectrum_method(wave: Waveform, dz: float, n: float=1., Rx=1.
         shiftx, shifty = np.abs(Lx-Rx*Lx)/2, np.abs(Ly-Ry*Ly)/2
         phi_c = shiftx+shifty
         
-        mfx, mfy = np.arange(-Nx//2, Nx//2), np.arange(-Ny//2, Ny//2)
+        mfx, mfy = np.arange(Nx) - Nx//2, np.arange(Ny) - Ny//2
         # standard array ordering
         kx, ky = 2*const.pi * mfx / (Nx * dx), 2*const.pi * mfy / (Ny * dy)
     
         kx, ky = np.meshgrid(kx, ky)
         mfx, mfy = np.meshgrid(mfx, mfy)
         
-        kz = np.sqrt((K**2 - kx**2 - ky**2 - (2*const.pi)**2*phi_c).astype(complex))
+        kz = np.sqrt((K**2 - kx**2 - ky**2).astype(complex))
         
         # Evanescent Condition
         K_c = kx**2 + ky**2
@@ -199,12 +202,12 @@ def scaled_angular_spectrum_method(wave: Waveform, dz: float, n: float=1., Rx=1.
     
     if dim == 1:
         x_out = 2*const.pi*Rx*mf/Nx
-        Uz = nufft.nufft1d2(x_out, Az, eps=1e-6, isign=10)/Nx
+        Uz = nufft.nufft1d2(x_out, Az, eps=1e-8, isign=10)/Nx
     else: # dim == 2:
         assert Ny is not None
         x_out = 2*const.pi * Rx * mfx.ravel() / Nx
         y_out = 2*const.pi * Ry * mfy.ravel() / Ny
-        Uz = nufft.nufft2d2(x_out, y_out, Az, eps=1e-6, isign=10).reshape(Ny, Nx)/(Nx * Ny)
+        Uz = nufft.nufft2d2(x_out, y_out, Az, eps=1e-8, isign=10).reshape(Ny, Nx)/(Nx * Ny)
     
     return Uz
     
