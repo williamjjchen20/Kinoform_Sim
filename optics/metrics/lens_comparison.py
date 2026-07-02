@@ -18,10 +18,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument("-N", type=int, required=True)
 parser.add_argument("--dim", type=int, choices=[1, 2], default=2,
                     help="simulation dimensionality (1 or 2)")
-parser.add_argument("--extend", action="store_true",
+parser.add_argument("--extend", action="store_true", default=False,
                     help="render 2D focal/lens views as 3D surfaces")
 
-def run_lens(label: str, lens_cls, simulation: SimulationObject, propagator: Propagator, 
+def run_lens(lens_cls, simulation: SimulationObject, propagator: Propagator, 
              E: float, f: float, R: float, n: float | complex, 
              err_func=None, w0=None):
     '''
@@ -46,7 +46,7 @@ def run_lens(label: str, lens_cls, simulation: SimulationObject, propagator: Pro
     # Sampling check
     f_s = source.wavelength * np.abs(lens.f) / (2 * lens.R)
     if simulation.Lx / simulation.Nx >= f_s:
-        print(f"[{label}] WARNING: under-sampled (dx={simulation.Lx/simulation.Nx:.3e} >= f_s={f_s:.3e})")
+        print(f"[WARNING: under-sampled (dx={simulation.Lx/simulation.Nx:.3e} >= f_s={f_s:.3e})")
 
     # snapshot incident wave (after aperture mask but before phase) for power_in
     source.filter(lens)
@@ -67,16 +67,16 @@ def collect_metrics(P_in, focal_wave, lens, label):
     eff = focal_efficiency(P_in, focal_wave, radius=1.22*focal_wave.wavelength*lens.f/(2*lens.R))
     return {
         "label": label,
-        "FWHM [m]": fwhm,
+        "fwhm": fwhm,
         "I_max": I_max,
         "I_avg": I_avg,
         "P_focal": P_focal,
-        "P_incident": P_in,
-        "focusing_efficiency": eff,
+        "P_in": P_in,
+        "eff": eff,
     }
 
-def print_comparison(metrics_list):
-    keys = ["FWHM [m]", "I_max", "I_avg", "P_focal", "P_incident", "focusing_efficiency"]
+def print_comparison(metrics_list: list[dict]):
+    keys = metrics_list[0].keys()
     header = f"{'Metric':<25}" + "".join(f"{m['label']:>20}" for m in metrics_list)
     print("=" * len(header))
     print(header)
@@ -91,18 +91,19 @@ def print_comparison(metrics_list):
 
 def plot_comparison_1D(results, savepath):
     '''
-    Plot lens phase, focal-plane intensity (log), and central line cut for an
-    arbitrary set of lenses.
+    Plot lens profile, lens phase, focal-plane intensity, and a zoomed
+    central cut for an arbitrary set of lenses.
 
-    `results` maps label -> (focal_wave, lens). One row per lens, three
-    columns: phase, focal intensity, central cut.
+    `results` maps label -> (focal_wave, lens, labels). One row per lens,
+    four columns: profile, phase, focal intensity, central cut (log-scale,
+    clipped near the geometric focus).
     '''
     n_lenses = len(results)
     if n_lenses == 0: raise Exception("No lenses added.")
 
     fig, ax = plt.subplots(
-        nrows=n_lenses, ncols=3,
-        figsize=(12, 3.0 * n_lenses),
+        nrows=n_lenses, ncols=4,
+        figsize=(16, 3.0 * n_lenses),
         squeeze=False,
         constrained_layout=True,
     )
@@ -110,16 +111,26 @@ def plot_comparison_1D(results, savepath):
     cmap_cycle = plt.get_cmap("tab10")
 
     for i, (name, (wave, lens, labels)) in enumerate(results.items()):
-
-        lens.plot_profile(ax=ax[i, 0], savedir=savedir, labels=labels)
         
+        lens.plot_profile(ax=ax[i, 0], labels=labels)
+
         ## Lens phase plot
-        lens_ax = lens.view(ax=ax[i, 1], color=cmap_cycle(i%10))
+        lens_ax = lens.view(ax=ax[i, 1], labels=labels, color=cmap_cycle(i%10))
         lens_ax.set(title=f"{name} Lens Phase")
 
-        ## Wave intensity slice plot
-        wave_ax = wave.view(ax=ax[i, 2], color=cmap_cycle(i%10))
+        ## Wave intensity full view
+        wave_ax = wave.view(ax=ax[i, 2], labels=labels, color=cmap_cycle(i%10))
         wave_ax.set(title=f"{name} Focal Intensity")
+
+        ## Zoomed central cut (mirrors 2D column 3 treatment)
+        x_scale_factor = labels.get("x_scale_factor", 1.0)
+        xlabel = labels.get("xlabel", "x [m]")
+
+        I = wave.intensity()
+        x = wave.grid
+        ax[i, 3].plot(x*x_scale_factor, I, color=cmap_cycle(i % 10))
+        ax[i, 3].set(xlim=(-lens.R/2*x_scale_factor, lens.R/2*x_scale_factor))
+        ax[i, 3].set(title=f"{name} Central Cut", xlabel=xlabel, ylabel="Intensity", yscale="log")
 
     fig.savefig(savepath)
     plt.close(fig)
@@ -150,12 +161,18 @@ def plot_comparison_2D(results, savepath, extend=False):
         lens.plot_profile(ax=ax[i, 0], labels=labels)
         
         ## Lens phase plot
-        lens_ax = lens.view(ax=ax[i, 1], cmap="twilight", labels=labels, show_cbar=True)
+        lens_labels = dict(labels)
+        focal_extent = [-2*lens.R, 2*lens.R, -2*lens.R, 2*lens.R]
+        lens_labels["extent"] = focal_extent
+        print(lens_labels)
+        lens_ax = lens.view(ax=ax[i, 1], labels=lens_labels, show_cbar=True)
         lens_ax.set(title=f"{name} Lens Phase")
-        
-        ## Wave intensity/phase plot
-        wave_ax = wave.view(ax=ax[i, 2], cmap="inferno", xlim=(-lens.R/2, lens.R/2), ylim=(-lens.R/2, lens.R/2), 
-                            labels=labels, extend=extend, show_cbar=True)
+
+        ## Wave intensity/phase plot: zoom around focal spot
+        # focal_extent = [-lens.R/2, lens.R/2, -lens.R/2, lens.R/2]
+        wave_ax = wave.view(ax=ax[i, 2],
+                            labels=labels,
+                            extend=extend, show_cbar=True)
         wave_ax.set(title=f"{name} Focal Intensity")
 
         ## Wave intensity slice plot
@@ -163,12 +180,12 @@ def plot_comparison_2D(results, savepath, extend=False):
         xlabel = labels.get("xlabel", "x [m]")
         
         I = wave.intensity()
-        Lx = wave.simulation.Lx
+        x = labels["extent"][0]
         Nx = I.shape[1]
-        x = np.linspace(-Lx/2, Lx/2, Nx)
+        x = np.linspace(-x, x, Nx)
         cy = I.shape[0] // 2
         ax[i, 3].plot(x*x_scale_factor, I[cy, :], color=cmap_cycle(i % 10))
-        ax[i, 3].set(xlim=(-lens.R/2*x_scale_factor, lens.R/2*x_scale_factor))
+        # ax[i, 3].set(xlim=(-lens.R/2*x_scale_factor, lens.R/2*x_scale_factor))
         ax[i, 3].set(title=f"{name} Central Cut", xlabel=xlabel, ylabel="Intensity", yscale="log")
 
     fig.savefig(savepath)
@@ -178,26 +195,43 @@ def test_compare_xray_lenses(lens_dict, N, dim, extend=False):
     print("Comparing Lenses...")
     
     # Parameters
-    Lx = 1.5e-4
-    Ly = 1.5e-4 if dim == 2 else None
+    Lx = 5e-4
+    Ly = 5e-4 if dim == 2 else None
     Lz = 10000
     E = 8e3       # eV
-    f = 1.0         # m
-    R = 5e-5        # m
-    n = xrl.Refractive_Index("Si", E / 1000, 2.329)
+    f = 1.        # m
+    R = 1e-4       # m
+    n = xrl.Refractive_Index("C5H8O2", E / 1000, 1.18)
     
     print(f"Refractive index n = {n}")
     print(f"Energy = {E} eV, f = {f} m, R = {R} m")
-
+    
+    ## Initialize box sizes
+    ref_sim = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=1024)
+    ref_source, ref_lens, P_in = run_lens(
+        Kinoform, ref_sim, AngularSpectrum(ref_sim), E, f, R, n, w0=1.5e-4
+    )
+    m = collect_metrics(P_in, ref_source, ref_lens, "reference")
+    ref_fwhm = m.get("fwhm", np.inf)
+    if ref_fwhm < Lx:
+        Lx_zoom = ref_fwhm*10
+        Ly_zoom = ref_fwhm*10
+        Rx, Ry = Lx_zoom/Lx, Ly_zoom/Ly
+        print(f"Zooming by: {Rx:3f}, {Ry:3f}")
+    else:
+        raise Exception("Invalid FWHM!")
+    
+    
+    ## Collect metrics for all lenses
     metrics = []
     results = {}
     for name in lens_dict:
         sim = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=N)
-        propagator = AngularSpectrum(sim)
-        label = "".join([c for c in name if c.isalpha()])
-        cls, n_quantized, err_func = lens_dict[name]
+        propagator = ScaledAngularSpectrum(sim, Rx=Rx, Ry=Ry)
+        
+        cls, err_func = lens_dict[name]
         source, lens, P_in = run_lens(
-            label, cls, sim, propagator, E, f, R, n,
+            cls, sim, propagator, E, f, R, n,
             err_func=err_func
         )
         m = collect_metrics(P_in, source, lens, name)
@@ -205,9 +239,12 @@ def test_compare_xray_lenses(lens_dict, N, dim, extend=False):
         
         plot_labels = {
             "label": name,
+            "extent": [-Lx_zoom/2, Lx_zoom/2, -Ly_zoom/2, Ly_zoom/2],
             "xlabel": r"x $[\mu m]$",
+            "xlim": None,
             "x_scale_factor": 1e6,
             "ylabel": r"y $[\mu m]$",
+            "ylim": None,
             "y_scale_factor": 1e6,
             "title": rf"{name} profile (f={lens.f:.3g} m, R={lens.R *1e6:.3g} $\mu m$)"
         }
@@ -257,14 +294,11 @@ def take_user_input():
                 break
             case _:
                 raise Exception("Unknown lens type")
-        key = lens + str(iter_count)
+            
+        # Lens Name
+        key = input("  > Lens name: ").strip()
+        key = key if key else lens + str(iter_count)
         lens_dict[key] = [lens_dict_key_cls]
-
-        # Quantization
-        print()
-        print(f"  Quantization for {key}  (blank for ideal)")
-        N = input("  > N-level approximation: ").strip()
-        lens_dict[key].append(N if N else None)
 
         # Errors (multiple allowed)
         print()

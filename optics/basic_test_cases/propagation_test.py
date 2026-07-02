@@ -32,6 +32,7 @@ def test_gaussian_1D(propagation_func):
 
     wave.propagate(z, propagation_func(simulation))
     print("Peak intensity:", np.max(wave.intensity()))
+    print("Peak Location:", wave.grid[np.argmax(wave.intensity())])
     ax[0, 1].plot(wave.grid, wave.intensity(), color="Black", label="Simulated")
 
     x = np.linspace(-Lx/2, Lx/2, N)
@@ -140,10 +141,10 @@ def test_constant_1D(propagation_func):
 def test_zoom_1D():
     print("Testing 1D Scaled ASM (zoom) on Gaussian Beam...")
     Lx, Lz = 6e-2, 1e5
-    N = 512
-    z = 4.
+    N = 1002
+    z = 1.
     w0 = 0.5e-2
-    Rx = 0.5
+    Rx = 0.01
 
     simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz)
     wave = GaussianBeam(energy=1.96, simulation=simulation, z=0, w0=w0)
@@ -158,7 +159,9 @@ def test_zoom_1D():
     I_th = np.abs(U_th)**2
 
     I_sim_norm = I_sim / I_sim.max()
+    print("Simulated Peak Location:", wave.grid[np.argmax(I_sim_norm)])
     I_th_norm = I_th / I_th.max()
+    print("Theoretical Peak Location:", x_out[np.argmax(I_th_norm)])
     err = np.abs(I_sim_norm - I_th_norm)
 
     print(f"  Rx = {Rx}")
@@ -190,10 +193,10 @@ def test_zoom_1D():
 def test_zoom_2D():
     print("Testing 2D Scaled ASM (zoom) on Gaussian Beam...")
     Lx, Ly, Lz = 5e-2, 5e-2, 100
-    N = 1024
+    N = 1000
     z = 3.
     w0 = 0.5e-3
-    Rx, Ry = 0.5, 0.5
+    Rx, Ry = 0.02, 0.02
 
     simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=N)
     wave = GaussianBeam(energy=1.96, simulation=simulation, z=0, w0=w0)
@@ -258,7 +261,7 @@ def test_zoom_2D():
 
 if __name__ == "__main__":
     # test_gaussian_1D(AngularSpectrum)
-    test_gaussian_2D(AngularSpectrum)
+    # test_gaussian_2D(AngularSpectrum)
     # test_constant_1D(ScaledAngularSpectrum)
-    # test_zoom_1D()
+    test_zoom_1D()
     test_zoom_2D()

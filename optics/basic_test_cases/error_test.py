@@ -214,24 +214,32 @@ def test_taper(max_err):
     
 def test_multierror():
     print("Testing Kinoform with taper (1D)...")
-    Lx, Lz = 1.5e-4, 10000
+    '''
+    Recreating AU kinoform lens manufacturing SEM snapshots in Gorelick et al. (2019)
+    
+    '''
+    
+    Lx, Lz = 5e-4, 10000
     N = 10000
 
-    E = 8.e3
-    f = 1.0
-    R = 5e-5
-    n = xrl.Refractive_Index("Si", E / 1000, 2.329)
+    E = 6.e3
+    f = 0.45
+    R = 4.5e-5
+    n = xrl.Refractive_Index("Au", E / 1000, 19.32)
 
     simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz)
 
     source = ConstantBeam(energy=E, simulation=simulation, z=0)
     lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n,
-                    simulation=simulation, z=0)
-    
-    lens.add_error(LensErrors.sidewall_taper, err=1e-6)
+                    simulation=simulation, z=0, zone_height=1.1e-6)
+    # print(lens.zone_locations)
+    # lens.add_error(LensErrors.zone_placement, err=2e-6, gap=True)
+    lens.add_error(LensErrors.sidewall_taper, err=1e-6,proportion=0.1)
+
     lens.add_error(LensErrors.cap_height, h=0.95, proportion=True)
-    lens.add_error(LensErrors.gaussian_etch, max_err=1e-7, invert=True)
-    # print(lens.R)
+    # lens.add_error(LensErrors.random_etch, max_err=5e-8, interval=1, distribution="gaussian")
+    lens.add_error(LensErrors.gaussian_etch, max_err=1e-8, invert=True)
+    print(lens.R)
     
     fig, ax = plt.subplots(figsize=(8, 4))
     x = lens.grid

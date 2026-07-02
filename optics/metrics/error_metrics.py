@@ -219,7 +219,7 @@ def main():
             
     n_metrics = 2
     ### Constant Taper
-    match input("Analyze constant taper? (y/n): "):
+    match input("Analyze constant removal? (y/n): "):
         case "y": 
             err_values = np.linspace(0, 0.2, 10)
             m = ref_lens.zones
@@ -249,7 +249,7 @@ def main():
         case _:
             print("Skipping constant taper.")
             
-    match input("Analyze gradual taper? (y/n): "):
+    match input("Analyze gradual removal? (y/n): "):
         case "y": 
             zones = ref_lens.zones
             err_values = np.array([-2])

@@ -14,7 +14,7 @@ def FWHM(wave: Waveform):
     I_half = I_max / 2
 
     if wave.dim == 1:
-        X = wave.grid
+        X = wave.grid*wave.Rx
         peak_idx = np.argmax(I)
         x_peak = X[peak_idx]
 
@@ -23,6 +23,7 @@ def FWHM(wave: Waveform):
         x_right = X[peak_idx:]
     else:
         X, Y = wave.grid
+        X, Y = X*wave.Rx, Y*wave.Ry
         peak_idx = np.unravel_index(np.argmax(I), I.shape)
         x_peak = X[peak_idx]
 
@@ -65,10 +66,11 @@ def intensity_stats(wave: Waveform):
 def total_power(wave: Waveform):
     I = wave.intensity()
     if wave.dim == 1:
-        X = wave.grid
+        X = wave.grid*wave.Rx
         P = integrate.simpson(I, x=X)
     else:
         X, Y = wave.grid
+        X, Y = X*wave.Rx, Y*wave.Ry
         tmp = integrate.simpson(I, x=X[0,:], axis=-1)
         P = integrate.simpson(tmp, x=Y[:,0])
         
@@ -86,7 +88,7 @@ def focal_power(wave: Waveform, radius):
     
     I = wave.intensity()
     if wave.dim == 1:
-        X = wave.grid
+        X = wave.grid*wave.Rx
         
         peak = np.argmax(I)
         xc = X[peak]
@@ -97,6 +99,7 @@ def focal_power(wave: Waveform, radius):
         P_focal = integrate.simpson(I_masked, x=X)
     else:
         X, Y = wave.grid
+        X, Y = X*wave.Rx, Y*wave.Ry
     
         peak = np.unravel_index(np.argmax(I), I.shape)
         xc, yc = X[peak], Y[peak]
