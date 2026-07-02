@@ -102,8 +102,8 @@ def plot_comparison_1D(results, savepath):
     if n_lenses == 0: raise Exception("No lenses added.")
 
     fig, ax = plt.subplots(
-        nrows=n_lenses, ncols=4,
-        figsize=(16, 3.0 * n_lenses),
+        nrows=n_lenses, ncols=3,
+        figsize=(12, 3.0 * n_lenses),
         squeeze=False,
         constrained_layout=True,
     )
@@ -121,16 +121,6 @@ def plot_comparison_1D(results, savepath):
         ## Wave intensity full view
         wave_ax = wave.view(ax=ax[i, 2], labels=labels, color=cmap_cycle(i%10))
         wave_ax.set(title=f"{name} Focal Intensity")
-
-        ## Zoomed central cut (mirrors 2D column 3 treatment)
-        x_scale_factor = labels.get("x_scale_factor", 1.0)
-        xlabel = labels.get("xlabel", "x [m]")
-
-        I = wave.intensity()
-        x = wave.grid
-        ax[i, 3].plot(x*x_scale_factor, I, color=cmap_cycle(i % 10))
-        ax[i, 3].set(xlim=(-lens.R/2*x_scale_factor, lens.R/2*x_scale_factor))
-        ax[i, 3].set(title=f"{name} Central Cut", xlabel=xlabel, ylabel="Intensity", yscale="log")
 
     fig.savefig(savepath)
     plt.close(fig)
@@ -195,12 +185,12 @@ def test_compare_xray_lenses(lens_dict, N, dim, extend=False):
     print("Comparing Lenses...")
     
     # Parameters
-    Lx = 5e-4
-    Ly = 5e-4 if dim == 2 else None
+    Lx = 2e-3
+    Ly = 2e-3 if dim == 2 else None
     Lz = 10000
     E = 8e3       # eV
     f = 1.        # m
-    R = 1e-4       # m
+    R = 5e-4       # m
     n = xrl.Refractive_Index("C5H8O2", E / 1000, 1.18)
     
     print(f"Refractive index n = {n}")
@@ -215,9 +205,15 @@ def test_compare_xray_lenses(lens_dict, N, dim, extend=False):
     ref_fwhm = m.get("fwhm", np.inf)
     if ref_fwhm < Lx:
         Lx_zoom = ref_fwhm*10
-        Ly_zoom = ref_fwhm*10
-        Rx, Ry = Lx_zoom/Lx, Ly_zoom/Ly
-        print(f"Zooming by: {Rx:3f}, {Ry:3f}")
+        Rx = Lx_zoom/Lx
+        if dim == 2:
+            Ly_zoom = ref_fwhm*10
+            Ry = Ly_zoom/Ly
+            print(f"Zooming by: {Rx:3f}, {Ry:3f}")
+        else:
+            Ly_zoom = None
+            Ry = 1.
+            print(f"Zooming by: {Rx:3f}")
     else:
         raise Exception("Invalid FWHM!")
     
@@ -239,7 +235,7 @@ def test_compare_xray_lenses(lens_dict, N, dim, extend=False):
         
         plot_labels = {
             "label": name,
-            "extent": [-Lx_zoom/2, Lx_zoom/2, -Ly_zoom/2, Ly_zoom/2],
+            "extent": [-Lx_zoom/2, Lx_zoom/2, -Ly_zoom/2, Ly_zoom/2] if dim == 2 else [-Lx_zoom/2, Lx_zoom/2], #type:ignore
             "xlabel": r"x $[\mu m]$",
             "xlim": None,
             "x_scale_factor": 1e6,
@@ -303,28 +299,49 @@ def take_user_input():
         # Errors (multiple allowed)
         print()
         print(f"  Errors for {key}  (blank Error Type to stop adding)")
-        print("  Available: Periodic Etch, Random Etch, Removal, Taper")
+        print("  Available: Cap Height, Periodic Etch, Random Etch, Gaussian Etch, Removal, Taper")
         errs = []
+
+        def _opt(prompt, cast, default):
+            s = input(prompt).strip()
+            return default if s == "" else cast(s)
+
         while True:
             err_type = input(f"  > Error #{len(errs)+1} type: ").strip()
             match err_type:
+                case "Cap Height":
+                    h = float(input("      Height (or proportion if proportion=True): "))
+                    proportion = _opt("      Proportion? [False]: ", lambda s: s.lower() in ("1", "true", "t", "yes", "y"), False)
+                    errs.append(functools.partial(LensErrors.cap_height, h=h, proportion=proportion))
                 case "Periodic Etch":
                     err = float(input("      Error: "))
-                    interval = int(input("      Interval: "))
+                    interval = _opt("      Interval [1]: ", int, 1)
                     errs.append(functools.partial(LensErrors.periodic_etch, err=err, interval=interval))
                 case "Random Etch":
                     err = float(input("      Max Error: "))
-                    interval = int(input("      Interval: "))
-                    errs.append(functools.partial(LensErrors.random_etch, max_err=err, interval=interval))
+                    interval = _opt("      Interval [1]: ", int, 1)
+                    distribution = _opt("      Distribution (uniform/gaussian/cauchy/exponential) [uniform]: ", str, None)
+                    seed = _opt("      Seed [0]: ", int, None)
+                    errs.append(functools.partial(LensErrors.random_etch, max_err=err, interval=interval, distribution=distribution, seed=seed))
+                case "Gaussian Etch":
+                    if lens != "Kinoform": raise Exception("Circular lens required!")
+                    err = float(input("      Max Error: "))
+                    invert = _opt("      Invert? [False]: ", lambda s: s.lower() in ("1", "true", "t", "yes", "y"), False)
+                    seed = _opt("      Seed [0]: ", int, None)
+                    errs.append(functools.partial(LensErrors.gaussian_etch, max_err=err, invert=invert, seed=seed))
                 case "Removal":
                     if lens != "Kinoform": raise Exception("Phase wrapped lens required!")
                     m = int(input("      Lateral zone to start taper (-1 = outermost): "))
                     proportion = float(input("      Proportion: "))
-                    errs.append(functools.partial(LensErrors.zone_removal, m=m, proportion=proportion, extend=True, remove_last=True))
+                    direction = _opt("      Direction (in/out) [out]: ", str, "out")
+                    extend = _opt("      Extend? [True]: ", lambda s: s.lower() in ("1", "true", "t", "yes", "y"), True)
+                    remove_last = _opt("      Remove last? [True]: ", lambda s: s.lower() in ("1", "true", "t", "yes", "y"), True)
+                    errs.append(functools.partial(LensErrors.zone_removal, m=m, proportion=proportion, direction=direction, extend=extend, remove_last=remove_last))
                 case "Taper":
                     if lens != "Kinoform": raise Exception("Phase wrapped lens required!")
                     err = float(input("      Error: "))
-                    errs.append(functools.partial(LensErrors.sidewall_taper, err=err))
+                    proportion = _opt("      Proportion [1.0]: ", float, 1.)
+                    errs.append(functools.partial(LensErrors.sidewall_taper, err=err, proportion=proportion))
                 case "":
                     break
                 case _:

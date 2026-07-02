@@ -146,7 +146,6 @@ class Object():
                 phase = self.phase()
                 
                 if self.dim != 1:
-                    c_label="Phase"
                     # domain coloring: |field| -> lightness (log), phase -> cyclic cmap
                     vmin = 1e-4*data.max() if data.max() > 0 else 0.0
                     vmax = data.max() if data.max() > 0 else 1.0
@@ -158,6 +157,9 @@ class Object():
                     rgb = rgb_phase * v[..., None]
                     norm = lnorm
                     sm = cm.ScalarMappable(norm=lnorm, cmap="Greys_r")
+                else:
+                    norm = sm = rgb = None
+                    
             elif isinstance(self, ThinLens):
                 data = self.phase()
                 norm = colors.Normalize(vmin=data.min(), vmax=data.max())
