@@ -98,11 +98,13 @@ class Object():
         sim = self.simulation
         if sim.dim == 1:
             self.grid = (np.arange(sim.Nx)-sim.Nx/2)*sim.dx#np.linspace(-sim.Lx/2, sim.Lx/2, sim.Nx)
+            self.Rx, self.Ry = 1., None
         else: # dim == 2
             x = (np.arange(sim.Nx)-sim.Nx/2)*sim.dx
             y = (np.arange(sim.Ny)-sim.Ny/2)*sim.dy #type: ignore
             self.grid = np.meshgrid(x, y)
-            
+            self.Rx, self.Ry = 1., 1.
+
     def _build_field(self, **kwargs):
         z = self.center[-1]
         if self.simulation.dim == 1:
@@ -311,8 +313,7 @@ class Waveform(Object):
             print(f"Propagating for {dz}.")
         propagation_func = propagator.propagator
 
-        U = propagation_func(self, dz)
-        self.field = U
+        self.field = propagation_func(self, dz)
         self.z += dz
         
     def intensity(self):

@@ -11,7 +11,6 @@ class CircularLens(ThinLens):
     def __init__(self, f, R, n, simulation: SimulationObject, z, **kwargs):
         self.R = R
         self.R_orig = R
-        self.delta = (1.-n).real
         
         F = ApertureFunctions()
         if simulation.dim == 2:
@@ -106,6 +105,7 @@ class OpticalLens(CircularLens):
 
 class XrayParabolicLens(CircularLens):
     def __init__(self, f, R, n, simulation: SimulationObject, z, **kwargs):
+        self.delta = (1.-n).real
         super().__init__(f, R, n, simulation, z,**kwargs)
         
     def thickness(self, *args, **kwargs):
@@ -123,6 +123,7 @@ class FZP(CircularLens):
     def __init__(self, t0, wavelength, f, R, n, simulation: SimulationObject, z, **kwargs):
         self.wavelength = wavelength
         self.t0 = t0
+        self.delta = (1.-n).real
         super().__init__(f, R, n, simulation, z,**kwargs)
         self.zones = (np.sqrt(f**2+R**2)-f)/wavelength
         self.zone_locations = self.zone_location(wavelength, f, R, np.arange(int(np.ceil(self.zones)+1)))
@@ -146,17 +147,21 @@ class FZP(CircularLens):
         return np.clip(zone_locations, 0, R)
         
 class Kinoform(CircularLens):
-    def __init__(self, wavelength, f, R, n, simulation: SimulationObject, z, **kwargs):
+    def __init__(self, wavelength, f, R, n, simulation: SimulationObject, z, zone_height: float | None = None, **kwargs):
         self.wavelength = wavelength
+        self.delta = (1.-n).real
+        self.height = self.wavelength/self.delta if zone_height is None else zone_height
+        self.effective_wavelength = wavelength if zone_height is None else self.delta*self.height
+        
         super().__init__(f, R, n, simulation, z,**kwargs)
-        self.zones = (np.sqrt(f**2+R**2)-f)/wavelength
-        self.zone_locations = self.zone_location(wavelength, f, R, np.arange(int(np.ceil(self.zones)+1)))
+        self.zones = (np.sqrt(f**2+R**2)-f)/self.effective_wavelength
+        self.zone_locations = self.zone_location(self.effective_wavelength, f, R, np.arange(int(np.ceil(self.zones)+1)))
         
     def thickness(self, *args, **kwargs):
         ## Note: Bandwidth limited by requiring wavelength for a specific energy of x-ray
         X = args[0]
         r_squared = X**2
-        t_2pi = self.wavelength/self.delta
+        t_2pi = self.height
         if self.simulation.dim == 2:
             Y = args[1]
             r_squared += Y**2
@@ -181,7 +186,7 @@ class LensErrors():
     @staticmethod 
     def cap_height(lens: Kinoform, h: float, proportion=False) -> tuple[np.ndarray, np.ndarray | None] :
         assert h > 0
-        height = lens.wavelength/lens.delta
+        height = lens.height
         if proportion:
             h_max = h*height
         
@@ -272,7 +277,7 @@ class LensErrors():
         return profile, errors
     
     @staticmethod
-    def zone_placement(kinoform: Kinoform, err: float | np.ndarray, gap=False, mutable=True) -> tuple[np.ndarray, np.ndarray | None]:
+    def zone_placement(kinoform: Kinoform, err: float | np.ndarray, gap=True, mutable=True) -> tuple[np.ndarray, np.ndarray | None]:
         '''
         Shift zone boundaries by a cumulative placement error of size `err` per
         zone, rebuild the parabolic profile so each sample's thickness is
@@ -371,7 +376,6 @@ class LensErrors():
             ms = np.append(ms, m_total - 1)
             proportions = np.append(proportions, 1.0)
 
-        print(ms, proportions)
         assert len(proportions) == len(ms), "proportions must match m in length (or be scalar)"
 
         # band radii, clipped at the physical aperture so the partial zone is handled correctly
@@ -401,12 +405,12 @@ class LensErrors():
         return profile, None
     
     @staticmethod
-    def sidewall_taper(kinoform: Kinoform, err: float | np.ndarray) -> tuple[np.ndarray, np.ndarray | None]:
-        m_total = int(np.ceil(kinoform.zones))
+    def sidewall_taper(kinoform: Kinoform, err: float | np.ndarray, proportion=1.) -> tuple[np.ndarray, np.ndarray | None]:
         
         errs = kinoform.add_error(LensErrors.zone_placement, err=err, **{"gap": True, "mutable": True})
         r_start = np.array(kinoform.zone_locations)
-        r_end = r_start + errs
+        assert errs is not None
+        r_end = r_start + proportion*errs
         
         if kinoform.dim == 1:
             r = np.abs(kinoform.grid)
@@ -414,7 +418,7 @@ class LensErrors():
             X, Y = kinoform.grid
             r = np.sqrt(X**2 + Y**2)
             
-        t_2pi = kinoform.wavelength/kinoform.delta
+        t_2pi = kinoform.height #kinoform.wavelength/kinoform.delta
         profile = kinoform.profile
         
         for r1, r2 in zip(r_start[1:], r_end[1:]):
