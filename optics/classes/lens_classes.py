@@ -155,7 +155,9 @@ class Kinoform(CircularLens):
         
         super().__init__(f, R, n, simulation, z,**kwargs)
         self.zones = (np.sqrt(f**2+R**2)-f)/self.effective_wavelength
-        self.zone_locations = self.zone_location(self.effective_wavelength, f, R, np.arange(int(np.ceil(self.zones)+1)))
+        zone_locations = Kinoform.calc_zone_locations(self.effective_wavelength, f, R, np.arange(int(np.ceil(self.zones)+1)))
+        self.zone_locations = zone_locations
+        self.zone_widths = Kinoform.calc_zone_widths(zone_locations)
         
     def thickness(self, *args, **kwargs):
         ## Note: Bandwidth limited by requiring wavelength for a specific energy of x-ray
@@ -174,9 +176,16 @@ class Kinoform(CircularLens):
         return self.zone_locations[m]
     
     @staticmethod
-    def zone_location(wavelength, f, R, m):
+    def calc_zone_locations(wavelength, f, R, m):
         zone_locations = np.sqrt(2*m*f*wavelength + (m*wavelength)**2)
-        return np.clip(zone_locations, 0, R)
+        zone_locations = np.clip(zone_locations, 0, R)
+        return zone_locations
+    
+    @staticmethod
+    def calc_zone_widths(zone_locations):
+        assert len(zone_locations) > 1
+        zone_widths = zone_locations[1:] - zone_locations[:-1]
+        return zone_widths
     
 class LensErrors():
     '''
@@ -321,6 +330,7 @@ class LensErrors():
             # kinoform.aperture = kinoform_new.aperture
             kinoform.aperture_field = kinoform_new.aperture_field
             kinoform.zone_locations = np.insert(shifted_outer, 0, 0.)
+            kinoform.zone_widths = Kinoform.calc_zone_widths(kinoform.zone_locations)
         
         if gap:            
             r_effective = r - eps[zone_idx]

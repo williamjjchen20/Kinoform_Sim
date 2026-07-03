@@ -220,7 +220,6 @@ class Object():
             raw_extent = labels.get("extent", default_extent)
             extent = [raw_extent[0]*x_scale_factor, raw_extent[1]*x_scale_factor,
                       raw_extent[2]*y_scale_factor, raw_extent[3]*y_scale_factor]
-            print(extent)
 
             if not extend:
                 # if we have a precomputed RGB (domain coloring), display it directly

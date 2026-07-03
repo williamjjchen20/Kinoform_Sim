@@ -239,7 +239,7 @@ def test_multierror():
     lens.add_error(LensErrors.cap_height, h=0.95, proportion=True)
     # lens.add_error(LensErrors.random_etch, max_err=5e-8, interval=1, distribution="gaussian")
     lens.add_error(LensErrors.gaussian_etch, max_err=1e-8, invert=True)
-    print(lens.R)
+    print(lens.zone_widths[-1])
     
     fig, ax = plt.subplots(figsize=(8, 4))
     x = lens.grid
