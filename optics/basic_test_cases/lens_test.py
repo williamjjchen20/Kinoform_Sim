@@ -279,15 +279,60 @@ def test_FZP():
     propagator = AngularSpectrum(simulation)
 
     source = ConstantBeam(energy=E, simulation=simulation, z=0)
-    lens = FZP(wavelength=source.wavelength, t0=1e-6, f=f, R=R, n=n, simulation=simulation, z=0, positive=True)
+    lens = FZP(wavelength=source.wavelength, f=f, R=R, n=n, simulation=simulation, z=0, positive=True)
 
     lens.plot_profile(ax=plt.figure().gca(), savedir=str(savedir))
     lens.init_transmittance(source)
+    
+    # Voelz and Roggemann (2009) sampling criterion to avoid aliasing
+    f_s = source.wavelength*np.abs(lens.f)/(2*lens.R)
+    print("Nyquist sampling rate, dx, dx<f_s:", f_s, Lx/N, (Lx/N) < f_s)
+    assert (Lx/N) < f_s and (Ly/N) < f_s
+
+    z1, z2 = lens.center[-1], lens.f
+    print("z1 (source -> lens):", z1, "  z2 (lens -> focus):", z2)
+
+    # lens sits at z=0, so all stations are post-lens steps toward focus
+    post_steps = [(f"z={z2/4:g} m",          z2/4),
+                  (f"z={z2/2:g} m",          z2/4),
+                  (f"z={3*z2/4:g} m",        z2/4),
+                  (f"z={z2:g} m (focus)",    z2/4)]
+    n_cols = 1 + len(post_steps)   # +1 for the pre-lens / incident view
+
+    fig, ax = plt.subplots(nrows=2, ncols=n_cols, figsize=(3.5*n_cols, 7),
+                           squeeze=False, sharey=True)
+
+    def _plot(col, title, wave):
+        wave.view(ax=ax[0, col], show_cbar=(col == n_cols-1))
+        ph = wave.phase()
+        im = ax[1, col].imshow(ph, extent=[-Lx/2, Lx/2, -Ly/2, Ly/2],
+                               origin="lower", cmap="twilight",
+                               vmin=-np.pi, vmax=np.pi)
+        ax[0, col].set(title=title)
+        ax[1, col].set(xlabel="x [m]", ylabel="y [m]" if col == 0 else "")
+        if col == n_cols-1:
+            fig.colorbar(im, ax=ax[1, col], fraction=0.046, pad=0.04, label="Phase [rad]")
+        print(f"  {title}: I_max={np.max(wave.intensity()):.3e}  "
+              f"phi[c]={ph[N//2, N//2]:+.3f}")
+
+    col = 0
+    _plot(col, "z=0 (incident)", source); col += 1
+
+    lens.transform(source)
+
+    for title, dz in post_steps:
+        source.propagate(dz, propagator)
+        _plot(col, title, source); col += 1
+
+    fig.suptitle(rf"FZP Lens (R={lens.R*1e6:g} $\mu$m, f={lens.f} m): "
+                 "intensity (top) and phase (bottom) along z")
+    fig.tight_layout()
+    plt.savefig(os.path.join(savedir, "FZP_Lens"))
 
 if __name__ == "__main__":
     # test_standard_lens_2D()
     # test_standard_lens_1D()
-    # test_lens_xray()
-    # test_kinoform()
+    test_lens_xray()
+    test_kinoform()
     test_FZP()
     

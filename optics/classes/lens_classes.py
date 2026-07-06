@@ -120,35 +120,34 @@ class XrayParabolicLens(CircularLens):
         return t_parabolic
     
 class FZP(CircularLens):
-    def __init__(self, t0, wavelength, f, R, n, simulation: SimulationObject, z, p=2, positive=True, **kwargs):
+    def __init__(self, wavelength, f, R, n, simulation: SimulationObject, z, zone_height: float | None = None, p=2, positive=True, **kwargs):
         self.wavelength = wavelength
         self.delta = (1.-n).real
-        self.r1 = f*wavelength
-        self.t0 = t0
+        self.height = zone_height if zone_height is not None else wavelength/(p*self.delta)
         self.p = p
         self.positive = positive
         
         self.zones = (np.sqrt(f**2+R**2)-f)/(self.wavelength/p)
-        zone_locations = Kinoform.calc_zone_locations(self.wavelength/p, f, R, np.arange(int(np.ceil(self.zones)+1)))
+        zone_locations = FZP.calc_zone_locations(self.wavelength/p, f, R, np.arange(int(np.ceil(self.zones))+1))
         self.zone_locations = zone_locations
-        self.zone_widths = Kinoform.calc_zone_widths(zone_locations)
+        self.zone_widths = FZP.calc_zone_widths(zone_locations)
         super().__init__(f, R, n, simulation, z,**kwargs)
         
     def thickness(self, *args, **kwargs):
         X = args[0]
         r_squared = X**2
-        if  self.simulation.dim == 2:
+        if self.simulation.dim == 2:
             Y = args[1]
             r_squared += Y**2
             
-            
-        t_fzp = np.full(r_squared.shape, self.t0)
-        r_z = np.clip(np.searchsorted(self.zone_locations, np.sqrt(r_squared), side="right"), 0, int(np.ceil(self.zones))-1)
+        t_fzp = np.full(r_squared.shape, self.height)
+        # indices start at 1 (between 0 and r1)
+        r_z = np.clip(np.searchsorted(self.zone_locations, np.sqrt(r_squared), side="right")-1, 0, len(self.zone_locations)-1)
 
         if self.positive:
-            t_fzp[r_z % 2 == 1] = 0
-        else:
             t_fzp[r_z % 2 == 0] = 0
+        else:
+            t_fzp[r_z % 2 == 1] = 0
             
         return t_fzp
     
@@ -175,7 +174,7 @@ class Kinoform(CircularLens):
         self.effective_wavelength = wavelength if zone_height is None else self.delta*self.height
         
         self.zones = (np.sqrt(f**2+R**2)-f)/self.effective_wavelength
-        zone_locations = Kinoform.calc_zone_locations(self.effective_wavelength, f, R, np.arange(int(np.ceil(self.zones)+1)))
+        zone_locations = Kinoform.calc_zone_locations(self.effective_wavelength, f, R, np.arange(int(np.ceil(self.zones))+1))
         self.zone_locations = zone_locations
         self.zone_widths = Kinoform.calc_zone_widths(zone_locations)
         super().__init__(f, R, n, simulation, z,**kwargs)
@@ -218,7 +217,10 @@ class LensErrors():
         assert h > 0
         height = lens.height
         if proportion:
+            assert h <= 1
             h_max = h*height
+        else:
+            h_max = h
         
         mask = lens.profile > h_max
         profile = lens.profile

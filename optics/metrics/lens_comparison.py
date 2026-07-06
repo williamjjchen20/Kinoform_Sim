@@ -185,13 +185,13 @@ def test_compare_xray_lenses(lens_dict, N, dim, extend=False):
     print("Comparing Lenses...")
     
     # Parameters
-    Lx = 2e-3
-    Ly = 2e-3 if dim == 2 else None
+    Lx = 1.5e-4
+    Ly = 1.5e-4 if dim == 2 else None
     Lz = 10000
     E = 8e3       # eV
     f = 1.        # m
-    R = 5e-4       # m
-    n = xrl.Refractive_Index("C5H8O2", E / 1000, 1.18)
+    R = 5e-5       # m
+    n = xrl.Refractive_Index("Si", E / 1000, 2.329)
     
     print(f"Refractive index n = {n}")
     print(f"Energy = {E} eV, f = {f} m, R = {R} m")
@@ -273,13 +273,15 @@ def take_user_input():
         print()
         print(f"[Lens #{iter_count}]   (blank lens type to finish)")
         print(RULE)
-        print("  Available types: Parabolic, Kinoform")
+        print("  Available types: Parabolic, FZP, Kinoform")
         lens = input("  > Lens type: ").strip()
 
         # Lens type
         match lens:
             case "Parabolic":
                 lens_dict_key_cls = XrayParabolicLens
+            case "FZP":
+                lens_dict_key_cls = FZP
             case "Kinoform":
                 lens_dict_key_cls = Kinoform
             case "":
