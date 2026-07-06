@@ -120,31 +120,52 @@ class XrayParabolicLens(CircularLens):
         return t_parabolic
     
 class FZP(CircularLens):
-    def __init__(self, t0, wavelength, f, R, n, simulation: SimulationObject, z, **kwargs):
+    def __init__(self, t0, wavelength, f, R, n, simulation: SimulationObject, z, p=2, positive=True, **kwargs):
         self.wavelength = wavelength
-        self.t0 = t0
         self.delta = (1.-n).real
+        self.r1 = f*wavelength
+        self.t0 = t0
+        self.p = p
+        self.positive = positive
+        
+        self.zones = (np.sqrt(f**2+R**2)-f)/(self.wavelength/p)
+        zone_locations = Kinoform.calc_zone_locations(self.wavelength/p, f, R, np.arange(int(np.ceil(self.zones)+1)))
+        self.zone_locations = zone_locations
+        self.zone_widths = Kinoform.calc_zone_widths(zone_locations)
         super().__init__(f, R, n, simulation, z,**kwargs)
-        self.zones = (np.sqrt(f**2+R**2)-f)/wavelength
-        self.zone_locations = self.zone_location(wavelength, f, R, np.arange(int(np.ceil(self.zones)+1)))
         
     def thickness(self, *args, **kwargs):
         X = args[0]
         r_squared = X**2
-        t_2pi = self.wavelength/self.delta
-        if self.simulation.dim == 2:
+        if  self.simulation.dim == 2:
             Y = args[1]
             r_squared += Y**2
             
-        # t_parabolic = (np.sqrt(r_squared+self.f**2)-self.f)/self.delta
-        t_const = self.t0/self.delta
-        
-        return t_const % t_2pi
+            
+        t_fzp = np.full(r_squared.shape, self.t0)
+        r_z = np.clip(np.searchsorted(self.zone_locations, np.sqrt(r_squared), side="right"), 0, int(np.ceil(self.zones))-1)
+
+        if self.positive:
+            t_fzp[r_z % 2 == 1] = 0
+        else:
+            t_fzp[r_z % 2 == 0] = 0
+            
+        return t_fzp
+    
+    def mth_zone(self, m):
+        return self.zone_locations[m]
 
     @staticmethod
-    def zone_location(wavelength, f, R, m):
+    def calc_zone_locations(wavelength, f, R, m):
         zone_locations = np.sqrt(2*m*f*wavelength + (m*wavelength)**2)
-        return np.clip(zone_locations, 0, R)
+        zone_locations = np.clip(zone_locations, 0, R)
+        return zone_locations
+    
+    @staticmethod
+    def calc_zone_widths(zone_locations):
+        assert len(zone_locations) > 1
+        zone_widths = zone_locations[1:] - zone_locations[:-1]
+        return zone_widths
         
 class Kinoform(CircularLens):
     def __init__(self, wavelength, f, R, n, simulation: SimulationObject, z, zone_height: float | None = None, **kwargs):
@@ -153,11 +174,11 @@ class Kinoform(CircularLens):
         self.height = self.wavelength/self.delta if zone_height is None else zone_height
         self.effective_wavelength = wavelength if zone_height is None else self.delta*self.height
         
-        super().__init__(f, R, n, simulation, z,**kwargs)
         self.zones = (np.sqrt(f**2+R**2)-f)/self.effective_wavelength
         zone_locations = Kinoform.calc_zone_locations(self.effective_wavelength, f, R, np.arange(int(np.ceil(self.zones)+1)))
         self.zone_locations = zone_locations
         self.zone_widths = Kinoform.calc_zone_widths(zone_locations)
+        super().__init__(f, R, n, simulation, z,**kwargs)
         
     def thickness(self, *args, **kwargs):
         ## Note: Bandwidth limited by requiring wavelength for a specific energy of x-ray

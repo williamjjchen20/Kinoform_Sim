@@ -260,10 +260,34 @@ def test_kinoform():
                  "intensity (top) and phase (bottom) along z")
     fig.tight_layout()
     plt.savefig(os.path.join(savedir, "Kinoform_Lens"))
+    
+def test_FZP():
+    print("Testing FZP (X-ray)...")
+
+    Lx, Ly, Lz = 1.5e-4, 1.5e-4, 10000
+    N = 1024
+
+    # parameters for simulation
+    E = 8.e3       # eV
+    f = 1.          # m
+    R = 5e-5
+    n = xrl.Refractive_Index("Si", E/1000, 2.329)
+    print("Refractive Index:", n)
+    assert (R < Lx and R < Ly)
+
+    simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=N)
+    propagator = AngularSpectrum(simulation)
+
+    source = ConstantBeam(energy=E, simulation=simulation, z=0)
+    lens = FZP(wavelength=source.wavelength, t0=1e-6, f=f, R=R, n=n, simulation=simulation, z=0, positive=True)
+
+    lens.plot_profile(ax=plt.figure().gca(), savedir=str(savedir))
+    lens.init_transmittance(source)
 
 if __name__ == "__main__":
-    test_standard_lens_2D()
-    test_standard_lens_1D()
-    test_lens_xray()
-    test_kinoform()
+    # test_standard_lens_2D()
+    # test_standard_lens_1D()
+    # test_lens_xray()
+    # test_kinoform()
+    test_FZP()
     
