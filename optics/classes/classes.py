@@ -152,7 +152,7 @@ class Object():
                     lnorm = colors.Normalize(vmin=vmin, vmax=vmax)
                     lv = lnorm(data)
                     v = np.clip(lv.filled(0) if hasattr(lv, "filled") else lv, 0, 1)
-                    hue = (phase + np.pi) / (2*np.pi)
+                    hue = (phase + np.pi)/ (2*np.pi)
                     rgb_phase = plt.get_cmap(_phase_cmap)(hue)[..., :3]
                     rgb = rgb_phase * v[..., None]
                     norm = lnorm
@@ -181,7 +181,7 @@ class Object():
             theta = np.linspace(0, 2*np.pi, 360)
             r = np.linspace(0.5, 1.0, 2)
             T, _ = np.meshgrid(theta, r)
-            wax.pcolormesh(theta, r, T, cmap=cmap, shading="auto")
+            wax.pcolormesh(theta, r, (T + np.pi) % (2*np.pi), cmap=cmap, vmin=0, vmax=2*np.pi, shading="auto")
             wax.set_yticks([])
             wax.set_xticks([0, np.pi/2, np.pi, 3*np.pi/2])
             wax.set_xticklabels(["0", "π/2", "±π", "-π/2"], color=text_color)
