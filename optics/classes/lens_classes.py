@@ -362,7 +362,9 @@ class LensErrors():
         if mutable:
             print("Warning: Mutating original aperture profile...")
             R_new = kinoform.R + eps[-1]
-            kinoform_new = Kinoform(kinoform.wavelength, kinoform.f, R_new, n=kinoform.n, simulation=kinoform.simulation.copy(), z=kinoform.z, **kinoform.kwargs)    
+            kinoform_new = type(kinoform)(kinoform.wavelength, kinoform.f, R_new, 
+                                          n=kinoform.n, simulation=kinoform.simulation.copy(), 
+                                          z=kinoform.z, **kinoform.kwargs)    
             kinoform.R = R_new
             # kinoform.aperture = kinoform_new.aperture
             kinoform.aperture_field = kinoform_new.aperture_field
@@ -378,7 +380,7 @@ class LensErrors():
         return profile, np.insert(err, 0, 0.)    
     
     @staticmethod
-    def zone_removal(kinoform: Kinoform | FZP, m: int | np.ndarray, proportion: float | np.ndarray, direction: str ="out", extend=False, remove_last=False) -> tuple[np.ndarray, np.ndarray | None]:
+    def zone_removal(kinoform: Kinoform, m: int | np.ndarray = -1, err: float | np.ndarray = 0., direction: str ="out", extend=False, remove_last=False, mutable=False) -> tuple[np.ndarray, np.ndarray | None]:
         '''
         Adds a taper by a specified percentage on a specified lateral zone
 
@@ -391,17 +393,20 @@ class LensErrors():
         - direction: inward "in" or outward "out" from the specified zone
         - extend: taper all zones m' >= m
         - remove_last: also remove the trailing partial zone (band that the
-          aperture clips). Equivalent to extending the sweep through m_total-1
-          with proportion=1.
+          aperture clips). Equivalent to appending m_total-1 with proportion=1.
+        - mutable: if True, shrink the lens aperture (R, aperture_field,
+          zone_locations, zone_widths) to exclude fully-removed outer zones,
+          mirroring the mutation semantics in `zone_placement`.
         '''
         zones = kinoform.zones
+        zone_widths = kinoform.zone_widths
         # number of zone bands, including the trailing partial one inside R
         m_total = int(np.ceil(zones))
         if isinstance(m, (int, float)): ms = np.array([m])
         else: ms = np.asarray(m)
-        if isinstance(proportion, (int, float)): proportions = np.array([proportion])
-        else: proportions = np.asarray(proportion)
-        
+        if isinstance(err, (int, float)): errs = np.array([err], dtype=np.float64)
+        else: errs = np.asarray(err, dtype=np.float64)
+
         # convert negative indices to positive equivalents wrt zone bands
         ms = np.where(ms < 0, m_total + ms, ms)
         assert np.all((ms >= 0) & (ms < m_total)), f"m must be in [0, {m_total})"
@@ -409,29 +414,25 @@ class LensErrors():
         if extend:
             m_min = int(np.min(ms))
             ms = np.arange(m_min, m_total)
-            if proportions.size != ms.size:
-                proportions = np.append(proportions,
-                                        np.full(ms.size - proportions.size, proportions[-1]))
+            if errs.size != ms.size:
+                errs = np.append(errs,
+                                        np.full(ms.size - errs.size, errs[-1]))
 
         # ensure the partial last band is fully removed if requested
-        if remove_last and not extend:
-            print("Warning: Mutating original aperture profile...")
-            R_new = kinoform.R - kinoform.zone_widths[-1]
-            kinoform_new = Kinoform(kinoform.wavelength, kinoform.f, R_new, n=kinoform.n, simulation=kinoform.simulation.copy(), z=kinoform.z, **kinoform.kwargs)    
-            kinoform.R = R_new
-            # kinoform.aperture = kinoform_new.aperture
-            kinoform.aperture_field = kinoform_new.aperture_field
-            kinoform.zone_locations = kinoform.zone_locations[:-1]
-            kinoform.zone_widths = kinoform.zone_locations[:-1]
-        
-            # ms = np.append(ms, m_total - 1)
-            # proportions = np.append(proportions, 1.0)
+        if remove_last:
+            last = m_total - 1
+            if last not in ms:
+                ms = np.append(ms, last)
+                errs = np.append(errs, 1.1*zone_widths[-1]) # overshoot by 10% for floating point errors
+            else:
+                errs[ms == last] = 1.1*zone_widths[-1]
 
-        assert len(proportions) == len(ms), "proportions must match m in length (or be scalar)"
+        assert len(errs) == len(ms), "errs must match m in length (or be scalar)"
+        assert np.all(ms < len(zone_widths))
 
         # band radii, clipped at the physical aperture so the partial zone is handled correctly
-        r_m_in = kinoform.zone_locations[:-1]#kinoform.zone_location(ms)
-        r_m_out = kinoform.zone_locations[1:]#np.minimum(kinoform.zone_location(ms + 1), kinoform.R)
+        r_m_in = kinoform.zone_locations[:-1]
+        r_m_out = kinoform.zone_locations[1:]
 
         if kinoform.dim == 1:
             r = np.abs(kinoform.grid)
@@ -440,18 +441,48 @@ class LensErrors():
             r = np.sqrt(X**2 + Y**2)
 
         profile = np.array(kinoform.profile)
-        for r_in, r_out, p in zip(r_m_in, r_m_out, proportions):
+        # track which bands are fully removed (for aperture mutation)
+        removed_full = np.zeros(m_total, dtype=bool)
+        for mi, p in zip(ms, errs):
+            r_in, r_out = r_m_in[mi], r_m_out[mi]
+            
             width = r_out - r_in
+            if p >= width:
+                removed_full[mi] = True
+                p = width
+                
             if width <= 0: continue   # band lies entirely outside the aperture
             if direction.lower() == "out":
-                r_cut = r_in + p*width
+                r_cut = r_in + p
                 mask = (r < r_cut) & (r >= r_in)
             elif direction.lower() == "in":
-                r_cut = r_out - p*width
+                r_cut = r_out - p
                 mask = (r < r_out) & (r >= r_cut)
             else:
                 raise ValueError(f"direction must be 'in' or 'out', got {direction!r}")
             profile[mask] = 0.
+
+        if mutable:
+            # shrink aperture down to the outermost surviving band
+            surviving = np.flatnonzero(~removed_full)
+            if surviving.size == 0:
+                print("Warning: all zones removed; leaving aperture unchanged.")
+            else:
+                m_last = int(surviving.max())
+                # only shrink if the outer tail (m_last+1 .. m_total-1) is fully gone
+                if np.all(removed_full[m_last+1:]):
+                    R_new = float(r_m_out[m_last])
+                    if R_new < kinoform.R:
+                        print("Warning: Mutating original aperture profile...")
+                        kinoform_new = type(kinoform)(kinoform.wavelength, kinoform.f, R_new,
+                                                      n=kinoform.n,
+                                                      simulation=kinoform.simulation.copy(),
+                                                      z=kinoform.z, **kinoform.kwargs)
+                        kinoform.R = R_new
+                        kinoform.aperture_field = kinoform_new.aperture_field
+                        kinoform.zone_locations = kinoform.zone_locations[:m_last + 2]
+                        kinoform.zone_widths = Kinoform.calc_zone_widths(kinoform.zone_locations)
+                        profile = profile * (kinoform.aperture_field > 0)
 
         return profile, None
     
