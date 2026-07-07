@@ -217,68 +217,93 @@ def main():
         case _:
             print("Skipping periodic etch.")
             
-    n_metrics = 2
-    ### Constant Taper
-    match input("Analyze constant removal? (y/n): "):
-        case "y": 
-            err_values = np.linspace(0, 0.2, 10)
-            m = ref_lens.zones
-            
-            labels = {
-                    "xlabel": [r"Taper Proportion"] * n_metrics,
-                    "ylabel": ["Focal Efficiency", "Strehl Ratio"],
-                    "xscale": ["linear"] * n_metrics,
-                    "yscale": ["linear", "linear"],
-                    "x_scale_factor":  1.0,                 # m -> um
-                    "y_scale_factor": [1.0, 1.0],     # FWHM m -> um
-                    "label": [f"E={E_i/1000} keV" for E_i in E_range],
-                    "title": f"Constant Taper (m={m} zones) for E={E/1000} keV Kinoform",
-                    "marker": ["o", "^", "s", "d", "x"],
-                    "color": ["red", "orange", "green", "blue", "purple"]
-                }
-            out = savedir / "taper_proportion_vs_intensity_periodic.png"
-            error_metrics(
-                source_factory, lens_factory, propagator,
-                LensErrors.zone_removal, "proportion", err_values,
-                metrics=("P_eff", "Strehl"),
-                E_range=E_range,
-                labels=labels,
-                error_kwargs={"m": -m, "extend": True, "remove_last": False},
-                savepath=out,
-            )
-        case _:
-            print("Skipping constant taper.")
-            
-    match input("Analyze gradual removal? (y/n): "):
-        case "y": 
-            zones = ref_lens.zones
-            err_values = np.array([-2])
+    ### Kinoform sidewall taper
+    match input("Analyze kinoform sidewall taper? (y/n): "):
+        case "y":
+            err_values = np.linspace(0, 2e-7, 10)
             p = 1.0
-            
             labels = {
-                    "xlabel": [r"Initial Taper Zone #"] * n_metrics,
-                    "ylabel": ["Focal Efficiency", "Strehl Ratio"],
-                    "xscale": ["linear"] * n_metrics,
-                    "yscale": ["linear", "linear"],
-                    "x_scale_factor":  1.0,                 # m -> um
-                    "y_scale_factor": [1.0, 1.0],     # FWHM m -> um
+                    "xlabel": [r"Sidewall Taper Error $[\mu m]$"] * len(metrics),
+                    "ylabel": ["Focal Efficiency", r"FWHM $[\mu m]$", "Strehl Ratio"],
+                    "xscale": ["linear"] * len(metrics),
+                    "yscale": ["linear", "linear", "linear"],
+                    "x_scale_factor":  1e6,                 # m -> um
+                    "y_scale_factor": [1.0, 1e6, 1.0],
                     "label": [f"E={E_i/1000} keV" for E_i in E_range],
-                    "title": f"Gradual Taper (p={p}) for E={E/1000} keV Kinoform",
+                    "title": f"Sidewall Taper (proportion={p}) for E={E/1000} keV Kinoform",
                     "marker": ["o", "^", "s", "d", "x"],
                     "color": ["red", "orange", "green", "blue", "purple"]
                 }
-            out = savedir / "taper_number_vs_intensity_periodic.png"
+            out = savedir / "sidewall_taper_vs_intensity.png"
             error_metrics(
                 source_factory, lens_factory, propagator,
-                LensErrors.zone_removal, "m", err_values,
-                metrics=("P_eff", "Strehl"),
+                LensErrors.kinoform_sidewall_taper, "err", err_values,
+                metrics=metrics,
                 E_range=E_range,
                 labels=labels,
-                error_kwargs={"proportion": p,  "extend": False, "remove_last": True},
+                error_kwargs={"proportion": p},
                 savepath=out,
             )
         case _:
-            print("Skipping gradual taper.")
+            print("Skipping kinoform sidewall taper.")
+
+    ### Cap height (sweep by proportion of full kinoform height)
+    match input("Analyze cap height? (y/n): "):
+        case "y":
+            err_values = np.linspace(1.0, 0.5, 10)
+            labels = {
+                    "xlabel": [r"Cap Height Proportion"] * len(metrics),
+                    "ylabel": ["Focal Efficiency", r"FWHM $[\mu m]$", "Strehl Ratio"],
+                    "xscale": ["linear"] * len(metrics),
+                    "yscale": ["linear", "linear", "linear"],
+                    "x_scale_factor":  1.0,
+                    "y_scale_factor": [1.0, 1e6, 1.0],
+                    "label": [f"E={E_i/1000} keV" for E_i in E_range],
+                    "title": f"Cap Height for E={E/1000} keV Kinoform",
+                    "marker": ["o", "^", "s", "d", "x"],
+                    "color": ["red", "orange", "green", "blue", "purple"]
+                }
+            out = savedir / "cap_height_vs_intensity.png"
+            error_metrics(
+                source_factory, lens_factory, propagator,
+                LensErrors.cap_height, "h", err_values,
+                metrics=metrics,
+                E_range=E_range,
+                labels=labels,
+                error_kwargs={"proportion": True},
+                savepath=out,
+            )
+        case _:
+            print("Skipping cap height.")
+
+    ### Cap floor (sweep by proportion of full kinoform height)
+    match input("Analyze cap floor? (y/n): "):
+        case "y":
+            err_values = np.linspace(1e-3, 0.5, 10)
+            labels = {
+                    "xlabel": [r"Cap Floor Proportion"] * len(metrics),
+                    "ylabel": ["Focal Efficiency", r"FWHM $[\mu m]$", "Strehl Ratio"],
+                    "xscale": ["linear"] * len(metrics),
+                    "yscale": ["linear", "linear", "linear"],
+                    "x_scale_factor":  1.0,
+                    "y_scale_factor": [1.0, 1e6, 1.0],
+                    "label": [f"E={E_i/1000} keV" for E_i in E_range],
+                    "title": f"Cap Floor for E={E/1000} keV Kinoform",
+                    "marker": ["o", "^", "s", "d", "x"],
+                    "color": ["red", "orange", "green", "blue", "purple"]
+                }
+            out = savedir / "cap_floor_vs_intensity.png"
+            error_metrics(
+                source_factory, lens_factory, propagator,
+                LensErrors.cap_floor, "h", err_values,
+                metrics=metrics,
+                E_range=E_range,
+                labels=labels,
+                error_kwargs={"proportion": True},
+                savepath=out,
+            )
+        case _:
+            print("Skipping cap floor.")
             
 if __name__ == "__main__":
     main()
