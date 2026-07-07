@@ -98,12 +98,11 @@ class Object():
         sim = self.simulation
         if sim.dim == 1:
             self.grid = (np.arange(sim.Nx)-sim.Nx/2)*sim.dx#np.linspace(-sim.Lx/2, sim.Lx/2, sim.Nx)
-            self.Rx, self.Ry = 1., None
         else: # dim == 2
             x = (np.arange(sim.Nx)-sim.Nx/2)*sim.dx
             y = (np.arange(sim.Ny)-sim.Ny/2)*sim.dy #type: ignore
             self.grid = np.meshgrid(x, y)
-            self.Rx, self.Ry = 1., 1.
+        self.Rx, self.Ry = 1., 1.
 
     def _build_field(self, **kwargs):
         z = self.center[-1]
@@ -130,7 +129,6 @@ class Object():
             Return (data, norm, scale, label, c_label, sm, rgb) for `view`.
             - data: scalar field for plotting (intensity / phase / field).
             - norm: matplotlib Normalize for `data`.
-            - scale: y-scale for 1D plots ("linear" or "log").
             - label: axis label for the data quantity.
             - c_label: colorbar label.
             - sm: optional ScalarMappable used for the colorbar (overrides imshow).
@@ -141,7 +139,6 @@ class Object():
             if isinstance(self, Waveform):
                 data = self.intensity()
                 label = "Intensity"
-                scale = "log"
                 c_label = label
                 phase = self.phase()
                 
@@ -164,13 +161,11 @@ class Object():
                 data = self.phase()
                 norm = colors.Normalize(vmin=data.min(), vmax=data.max())
                 label = c_label = "Phase"
-                scale = "linear"
             else:
                 data = self.field
                 norm = colors.Normalize(vmin=0., vmax=data.max())
                 label = c_label = ""
-                scale = "linear"
-            return data, norm, scale, label, c_label, sm, rgb
+            return data, norm, label, c_label, sm, rgb
         
         def _add_phase_wheel(host_ax, size=0.22, pad=0.1,
                              cmap=_phase_cmap, text_color="white"):
@@ -198,8 +193,10 @@ class Object():
         if self.field is None: raise NotImplementedError
 
         ## decide what scalar data, norm, and colorbar mappable to use per type
-        data, norm, scale, label, c_label, sm, rgb = _view_data(self)
+        data, norm, label, c_label, sm, rgb = _view_data(self)
 
+        xscale = labels.get("xscale", "linear")
+        yscale = labels.get("yscale", "linear")
         x_scale_factor = labels.get("x_scale_factor", 1.0)
         y_scale_factor = labels.get("y_scale_factor", 1.0)
         xlabel = labels.get("xlabel", "x [m]")
@@ -210,7 +207,7 @@ class Object():
 
         if xlim is not None: xlim = np.array(xlim) * x_scale_factor
         if ylim is not None: ylim = np.array(ylim) * y_scale_factor
-
+    
         ## plotting treatments based on dimension specified
         if self.simulation.dim == 2:
             # `extent` in `labels` overrides the default (full simulation box).
@@ -280,8 +277,8 @@ class Object():
                 ax3d.set(xlabel=xlabel, ylabel=ylabel, title=title, zlabel=label)
                 used_ax = ax3d
         else:
-            ax.plot(self.grid, data, color=color)
-            ax.set(xlabel=xlabel, ylabel=label, yscale=scale, title=title,
+            ax.plot(self.grid*x_scale_factor*self.Rx, data*y_scale_factor, color=color)
+            ax.set(xlabel=xlabel, ylabel=label, xscale=xscale, yscale=yscale, title=title,
                    xlim=xlim, ylim=ylim)
             used_ax = ax
 

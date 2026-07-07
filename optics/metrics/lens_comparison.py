@@ -120,11 +120,18 @@ def plot_comparison_1D(results, savepath):
         lens.plot_profile(ax=ax[i, 0], labels=labels)
 
         ## Lens phase plot
-        lens_ax = lens.view(ax=ax[i, 1], labels=labels, color=cmap_cycle(i%10))
+        lens_labels = dict(labels)
+        lens_labels["xlim"] = None
+        lens_labels["ylim"] = None
+        lens_labels["y_scale_factor"] = 1.
+        lens_ax = lens.view(ax=ax[i, 1], labels=lens_labels, color=cmap_cycle(i%10))
         lens_ax.set(title=f"{name} Lens Phase")
 
         ## Wave intensity full view
-        wave_ax = wave.view(ax=ax[i, 2], labels=labels, color=cmap_cycle(i%10))
+        wave_labels = dict(labels)
+        wave_labels["xlim"] = None
+        wave_labels["y_scale_factor"] = 1.
+        wave_ax = wave.view(ax=ax[i, 2], labels=wave_labels, color=cmap_cycle(i%10))
         wave_ax.set(title=f"{name} Focal Intensity")
 
     fig.savefig(savepath)
@@ -176,6 +183,7 @@ def plot_comparison_2D(results, savepath, extend=False):
         ## Wave intensity slice plot
         x_scale_factor = labels.get("x_scale_factor", 1.0)
         xlabel = labels.get("xlabel", "x [m]")
+        yscale = labels.get("yscale", "linear")
         ylim = labels.get("ylim", None)
         
         I = wave.intensity()
@@ -185,7 +193,7 @@ def plot_comparison_2D(results, savepath, extend=False):
         cy = I.shape[0] // 2
         ax[i, 3].plot(x*x_scale_factor, I[cy, :], color=cmap_cycle(i % 10))
         # ax[i, 3].set(xlim=(-lens.R/2*x_scale_factor, lens.R/2*x_scale_factor))
-        ax[i, 3].set(title=f"{name} Central Cut", xlabel=xlabel, ylim=ylim, ylabel="Intensity", yscale="linear")
+        ax[i, 3].set(title=f"{name} Central Cut", xlabel=xlabel, ylim=ylim, ylabel="Intensity", yscale=yscale)
 
     fig.savefig(savepath)
     plt.close(fig)
@@ -194,12 +202,12 @@ def test_compare_xray_lenses(lens_dict, N, dim, extend=False):
     print("Comparing Lenses...")
     
     # Parameters
-    Lx = 2.e-4
-    Ly = 2.e-4 if dim == 2 else None
+    Lx = 5e-4
+    Ly = 5e-4 if dim == 2 else None
     Lz = 10000
     E = 8e3       # eV
     f = 1.        # m
-    R = 8e-5       # m
+    R = 2e-4       # m
     n = xrl.Refractive_Index("Si", E / 1000, 2.329)
     
     print(f"Refractive index n = {n}")
@@ -208,11 +216,12 @@ def test_compare_xray_lenses(lens_dict, N, dim, extend=False):
     ## Initialize box sizes
     ref_sim = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=1024)
     ref_source, ref_lens, P_in = run_lens(
-        Kinoform, ref_sim, AngularSpectrum(ref_sim), E, f, R, n, w0=1.5e-4
+        Kinoform, ref_sim, AngularSpectrum(ref_sim), E, f, R, n
     )
     m = collect_metrics(P_in, ref_source, ref_lens, "reference")
     ref_fwhm = m.get("fwhm", np.inf)
     ref_I = m.get("I_max", 1.)
+    print(ref_I)
     if ref_fwhm < Lx:
         Lx_zoom = ref_fwhm*10
         Rx = Lx_zoom/Lx
@@ -248,9 +257,11 @@ def test_compare_xray_lenses(lens_dict, N, dim, extend=False):
             "extent": [-Lx_zoom/2, Lx_zoom/2, -Ly_zoom/2, Ly_zoom/2] if dim == 2 else [-Lx_zoom/2, Lx_zoom/2], #type:ignore
             "xlabel": r"x $[\mu m]$",
             "xlim": None,
+            "xscale": "linear",
             "x_scale_factor": 1e6,
             "ylabel": r"y $[\mu m]$",
-            "ylim": (0, 2*ref_I),
+            "ylim": (0, 1.5*ref_I),
+            "yscale": "linear",
             "y_scale_factor": 1e6,
             "title": rf"{name} profile (f={lens.f:.3g} m, R={lens.R *1e6:.3g} $\mu m$)"
         }
@@ -354,7 +365,7 @@ def take_user_input():
                 case "Removal":
                     if lens != "Kinoform" and lens != "FZP": raise Exception("Phase wrapped lens required!")
                     m = int(input("      Lateral zone to start taper (-1 = outermost): "))
-                    proportion = float(input("      Proportion: "))
+                    err = float(input("      Error: "))
                     direction = _opt("      Direction (in/out) [out]: ", str, "out")
                     extend = _opt("      Extend? [True]: ", lambda s: s.lower() in ("1", "true", "t", "yes", "y"), True)
                     remove_last = _opt("      Remove last? [True]: ", lambda s: s.lower() in ("1", "true", "t", "yes", "y"), True)

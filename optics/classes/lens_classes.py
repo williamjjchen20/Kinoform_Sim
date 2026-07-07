@@ -25,7 +25,7 @@ class CircularLens(ThinLens):
         self.R = self.R_orig
         super().reset()
             
-    def plot_profile(self, ax=None, savedir="", labels=None):
+    def plot_profile(self, ax=None, savedir="", labels=None, zoom=False):
         '''
         Plot the side profile (thickness vs. x) of the lens from
         `self.profile`. For 2D simulations, takes the central row.
@@ -207,6 +207,9 @@ class Kinoform(CircularLens):
         zone_widths = zone_locations[1:] - zone_locations[:-1]
         return zone_widths
     
+class CompoundLens(ThinLens):
+    pass
+    
 class LensErrors():
     '''
     Takes in a lens of 'Lens' class and returns the lens profile including the error added
@@ -324,7 +327,7 @@ class LensErrors():
         return profile, errors
     
     @staticmethod
-    def kinoform_zone_placement(kinoform: Kinoform, err: float | np.ndarray, gap=True, mutable=True) -> tuple[np.ndarray, np.ndarray | None]:
+    def kinoform_zone_placement(kinoform: Kinoform, err: float | np.ndarray, mutable=True) -> tuple[np.ndarray, np.ndarray | None]:
         '''
         Shift zone boundaries by a cumulative placement error of size `err` per
         zone, rebuild the parabolic profile so each sample's thickness is
@@ -427,6 +430,7 @@ class LensErrors():
             else:
                 errs[ms == last] = 1.1*zone_widths[-1]
 
+        print(errs)
         assert len(errs) == len(ms), "errs must match m in length (or be scalar)"
         assert np.all(ms < len(zone_widths))
 
@@ -445,6 +449,7 @@ class LensErrors():
         removed_full = np.zeros(m_total, dtype=bool)
         for mi, p in zip(ms, errs):
             r_in, r_out = r_m_in[mi], r_m_out[mi]
+            print("Removing...", r_in, r_out)
             
             width = r_out - r_in
             if p >= width:
@@ -454,10 +459,10 @@ class LensErrors():
             if width <= 0: continue   # band lies entirely outside the aperture
             if direction.lower() == "out":
                 r_cut = r_in + p
-                mask = (r < r_cut) & (r >= r_in)
+                mask = (r <= r_cut) & (r >= r_in)
             elif direction.lower() == "in":
                 r_cut = r_out - p
-                mask = (r < r_out) & (r >= r_cut)
+                mask = (r <= r_out) & (r >= r_cut)
             else:
                 raise ValueError(f"direction must be 'in' or 'out', got {direction!r}")
             profile[mask] = 0.
@@ -494,6 +499,7 @@ class LensErrors():
         
         r_start = np.array(kinoform.zone_locations)
         r_end = r_start + proportion*errs
+        # print(r_start, r_end)
         
         if kinoform.dim == 1:
             r = np.abs(kinoform.grid)
@@ -501,11 +507,11 @@ class LensErrors():
             X, Y = kinoform.grid
             r = np.sqrt(X**2 + Y**2)
             
-        t_2pi = kinoform.height #kinoform.wavelength/kinoform.delta
+        t_2pi = kinoform.height 
         profile = kinoform.profile
         
-        for r1, r2 in zip(r_start[1:], r_end[1:]):
-            mask = (r < r2) & (r >= r1)
+        for r1, r2 in zip(r_start[1:-1], r_end[1:-1]):
+            mask = (r <= r2) & (r >= r1)
             r_mask = r[mask]
             taper = -t_2pi/(r2-r1)*(r_mask-r2)
             profile[mask] = taper
@@ -534,12 +540,12 @@ class LensErrors():
         profile = FZP.profile
         
         for r1, r2, r3, r4 in zip(r_start, r_left, r_right, r_end):
-            mask_left = (r < r2) & (r >= r1)
+            mask_left = (r <= r2) & (r >= r1)
             r_mask = r[mask_left]
             taper_left = t0/(r2-r1)*(r_mask-r1)
             profile[mask_left] = taper_left
             
-            mask_right = (r < r4) & (r >= r3)
+            mask_right = (r <= r4) & (r >= r3)
             r_mask = r[mask_right]
             taper_right = -t0/(r4-r3)*(r_mask-r4)
             profile[mask_right] = taper_right

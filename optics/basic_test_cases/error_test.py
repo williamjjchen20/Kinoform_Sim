@@ -76,7 +76,7 @@ def test_kinoform_random_etch(max_err):
     plt.close(fig)
     print(f"Saved etched kinoform profile to {out}.")
     
-def test_zone_removal(proportion):
+def test_zone_removal(err):
     print("Testing Kinoform with zone removal (1D)...")
     Lx, Lz = 1.5e-4, 10000
     N = 10000
@@ -94,8 +94,9 @@ def test_zone_removal(proportion):
 
     print("Zones:", lens.zones)
     n = lens.zones
-    lens.add_error(LensErrors.zone_removal, m=-n, proportion=proportion, direction="in", extend=True, remove_last=False)
-
+    
+    lens.add_error(LensErrors.zone_removal, direction="in", extend=True, remove_last=True, mutable=True)
+    
     fig, ax = plt.subplots(figsize=(8, 4))
     x = lens.grid
     mask = np.abs(x) <= lens.R
@@ -103,7 +104,7 @@ def test_zone_removal(proportion):
     ax.plot(x[mask], lens.profile[mask], color="navy", lw=1)
     ax.axhline(0, color="black", lw=0.5)
     ax.set(xlabel="x [m]", ylabel="thickness [m]",
-           title=f"Tapered Kinoform profile (proportion={proportion})")
+           title=f"Tapered Kinoform profile (proportion={err})")
     ax.set_xlim(-lens.R, lens.R)
 
     out = savedir / "Kinoform_removal_profile.png"
@@ -215,13 +216,13 @@ def test_taper(max_err):
 def test_multierror():
     print("Testing Kinoform Multierror (1D)...")
     
-    Lx, Lz = 5e-4, 10000
-    N = 10000
+    Lx, Lz = 8e-4, 10000
+    N = 100000
 
     E = 8.e3
-    f = 1.0
-    R = 5e-5
-    n = xrl.Refractive_Index("Si", E / 1000, 2.329)
+    f = 1.
+    R = 3.5e-4
+    n = xrl.Refractive_Index("C5H8O2", E / 1000, 1.18)
 
     simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz)
 
@@ -229,27 +230,25 @@ def test_multierror():
     lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n,
                     simulation=simulation, z=0)
     print("Kinoform Height:", lens.height)
-    # print(lens.zone_locations)
-
     lens.add_error(LensErrors.kinoform_sidewall_taper, err=1e-7,proportion=0.8)
-    lens.add_error(LensErrors.zone_removal, m=-1, proportion=1.0, direction="in", remove_last=True)
+
+    lens.add_error(LensErrors.zone_removal, direction="in", remove_last=True, mutable=False)
 
     lens.add_error(LensErrors.cap_height, h=0.99, proportion=True)
     lens.add_error(LensErrors.cap_floor, h=0.02, proportion=True)
     lens.add_error(LensErrors.random_etch, max_err=5e-8, interval=1, distribution="gaussian")
     lens.add_error(LensErrors.gaussian_etch, max_err=1e-8, invert=True)
-    print(lens.zone_locations)
     print("Outer Zone Width:", lens.zone_widths[-1])
     
     fig, ax = plt.subplots(figsize=(8, 4))
     x = lens.grid
     mask = np.abs(x) <= lens.R
-    ax.fill_between(x[mask], 0, lens.profile[mask], color="steelblue", alpha=0.6)
-    ax.plot(x[mask], lens.profile[mask], color="navy", lw=1)
+    ax.fill_between(x[mask]*1e6, 0, lens.profile[mask], color="steelblue", alpha=0.6)
+    ax.plot(x[mask]*1e6, lens.profile[mask], color="navy", lw=1)
     ax.axhline(0, color="black", lw=0.5)
-    ax.set(xlabel="x [m]", ylabel="thickness [m]",
+    ax.set(xlabel="x [um]", ylabel="thickness [m]",
            title=f"Kinoform profile")
-    ax.set_xlim(-lens.R, lens.R)
+    ax.set_xlim(0.99*lens.R*1e6, lens.R*1e6)
 
     out = savedir / f"Kinoform_error_profile.png"
     fig.savefig(out)
@@ -346,12 +345,12 @@ if __name__ == "__main__":
     # test_kinoform_random_etch(max_err)
     # test_gaussian_etch(max_err)
     # test_gaussian_etch(max_err, invert=True)
-    # test_zone_removal(0.5)
+    # test_zone_removal(1e-6)
     # test_zone_placement(1e-6)
     # test_taper(1e-6)
     test_multierror()
     # test_reference()
-    test_FZP_error()
+    # test_FZP_error()
 
     
     
