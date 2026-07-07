@@ -213,7 +213,7 @@ class LensErrors():
     Returns updated lens and errors
     '''
     @staticmethod 
-    def cap_height(lens: Kinoform, h: float, proportion=False) -> tuple[np.ndarray, np.ndarray | None] :
+    def cap_height(lens: Kinoform | FZP, h: float, proportion=False) -> tuple[np.ndarray, np.ndarray | None]:
         assert h > 0
         height = lens.height
         if proportion:
@@ -225,6 +225,21 @@ class LensErrors():
         mask = lens.profile > h_max
         profile = lens.profile
         profile[mask] = h_max
+        return profile, None
+    
+    @staticmethod
+    def cap_floor(lens: Kinoform | FZP, h: float, proportion = False) -> tuple[np.ndarray, np.ndarray | None]:
+        assert h > 0
+        height = lens.height
+        if proportion:
+            assert h <= 1
+            h_min = h*height
+        else:
+            h_min = h
+            
+        mask = lens.profile < h_min
+        profile = lens.profile
+        profile[mask] = h_min
         return profile, None
     
     @staticmethod
@@ -309,7 +324,7 @@ class LensErrors():
         return profile, errors
     
     @staticmethod
-    def zone_placement(kinoform: Kinoform, err: float | np.ndarray, gap=True, mutable=True) -> tuple[np.ndarray, np.ndarray | None]:
+    def kinoform_zone_placement(kinoform: Kinoform, err: float | np.ndarray, gap=True, mutable=True) -> tuple[np.ndarray, np.ndarray | None]:
         '''
         Shift zone boundaries by a cumulative placement error of size `err` per
         zone, rebuild the parabolic profile so each sample's thickness is
@@ -326,10 +341,9 @@ class LensErrors():
         else: 
             assert (len(err) < m_total)
             err = np.asarray(err)
-        eps = np.cumsum(err)#np.arange(m_total) * err # for zones 1 to m
-        # eps[0] = 0.
+        eps = np.cumsum(err)
+
         assert np.all(eps[:-1] <= eps[1:]) 
-        # print(eps)
         
         r_m = kinoform.zone_locations
         r_in, r_out = r_m[:-1], r_m[1:]
@@ -354,22 +368,17 @@ class LensErrors():
             kinoform.aperture_field = kinoform_new.aperture_field
             kinoform.zone_locations = np.insert(shifted_outer, 0, 0.)
             kinoform.zone_widths = Kinoform.calc_zone_widths(kinoform.zone_locations)
-        
-        if gap:            
-            r_effective = r - eps[zone_idx]
-            t_eff = (np.sqrt(r_effective**2 + f**2) - f) / delta
-            t = t_eff - h_in
-            t[t < 0] = 0
-            profile = t * (kinoform.aperture_field > 0)
-
-        else:
-            t_parabolic = (np.sqrt(r**2 + f**2) - f) / delta
-            profile = (t_parabolic - h_in) * (kinoform.aperture_field > 0)
+                  
+        r_effective = r - eps[zone_idx]
+        t_eff = (np.sqrt(r_effective**2 + f**2) - f) / delta
+        t = t_eff - h_in
+        t[t < 0] = 0
+        profile = t * (kinoform.aperture_field > 0)
         
         return profile, np.insert(err, 0, 0.)    
     
     @staticmethod
-    def zone_removal(kinoform: Kinoform, m: int | np.ndarray, proportion: float | np.ndarray, direction: str ="out", extend=False, remove_last=False) -> tuple[np.ndarray, np.ndarray | None]:
+    def zone_removal(kinoform: Kinoform | FZP, m: int | np.ndarray, proportion: float | np.ndarray, direction: str ="out", extend=False, remove_last=False) -> tuple[np.ndarray, np.ndarray | None]:
         '''
         Adds a taper by a specified percentage on a specified lateral zone
 
@@ -406,8 +415,17 @@ class LensErrors():
 
         # ensure the partial last band is fully removed if requested
         if remove_last and not extend:
-            ms = np.append(ms, m_total - 1)
-            proportions = np.append(proportions, 1.0)
+            print("Warning: Mutating original aperture profile...")
+            R_new = kinoform.R - kinoform.zone_widths[-1]
+            kinoform_new = Kinoform(kinoform.wavelength, kinoform.f, R_new, n=kinoform.n, simulation=kinoform.simulation.copy(), z=kinoform.z, **kinoform.kwargs)    
+            kinoform.R = R_new
+            # kinoform.aperture = kinoform_new.aperture
+            kinoform.aperture_field = kinoform_new.aperture_field
+            kinoform.zone_locations = kinoform.zone_locations[:-1]
+            kinoform.zone_widths = kinoform.zone_locations[:-1]
+        
+            # ms = np.append(ms, m_total - 1)
+            # proportions = np.append(proportions, 1.0)
 
         assert len(proportions) == len(ms), "proportions must match m in length (or be scalar)"
 
@@ -426,10 +444,10 @@ class LensErrors():
             width = r_out - r_in
             if width <= 0: continue   # band lies entirely outside the aperture
             if direction.lower() == "out":
-                r_cut = r_in + p#*width
+                r_cut = r_in + p*width
                 mask = (r < r_cut) & (r >= r_in)
             elif direction.lower() == "in":
-                r_cut = r_out - p#*width
+                r_cut = r_out - p*width
                 mask = (r < r_out) & (r >= r_cut)
             else:
                 raise ValueError(f"direction must be 'in' or 'out', got {direction!r}")
@@ -438,11 +456,12 @@ class LensErrors():
         return profile, None
     
     @staticmethod
-    def sidewall_taper(kinoform: Kinoform, err: float | np.ndarray, proportion=1.) -> tuple[np.ndarray, np.ndarray | None]:
+    def kinoform_sidewall_taper(kinoform: Kinoform, err: float | np.ndarray, proportion=1.) -> tuple[np.ndarray, np.ndarray | None]:
         
-        errs = kinoform.add_error(LensErrors.zone_placement, err=err, **{"gap": True, "mutable": True})
-        r_start = np.array(kinoform.zone_locations)
+        errs = kinoform.add_error(LensErrors.kinoform_zone_placement, err=err, **{"mutable": True})
         assert errs is not None
+        
+        r_start = np.array(kinoform.zone_locations)
         r_end = r_start + proportion*errs
         
         if kinoform.dim == 1:
@@ -461,3 +480,38 @@ class LensErrors():
             profile[mask] = taper
                 
         return profile, errs
+    
+    @staticmethod
+    def FZP_sidewall_taper(FZP: FZP, err: float | np.ndarray, proportion=1.) -> tuple[np.ndarray, np.ndarray | None]:
+        zone_locations = np.array(FZP.zone_locations)
+        zone_locations = zone_locations[zone_locations > 0]
+        
+        if FZP.positive:
+            r_left, r_right = zone_locations[:-1:2], zone_locations[1:-1:2]
+        else:
+            r_right, r_left = zone_locations[:-1:2], zone_locations[1:-1:2]
+
+        r_start, r_end = r_left - err, r_right + err
+        
+        if FZP.dim == 1:
+            r = np.abs(FZP.grid)
+        else:
+            X, Y = FZP.grid
+            r = np.sqrt(X**2 + Y**2)
+            
+        t0 = FZP.height 
+        profile = FZP.profile
+        
+        for r1, r2, r3, r4 in zip(r_start, r_left, r_right, r_end):
+            mask_left = (r < r2) & (r >= r1)
+            r_mask = r[mask_left]
+            taper_left = t0/(r2-r1)*(r_mask-r1)
+            profile[mask_left] = taper_left
+            
+            mask_right = (r < r4) & (r >= r3)
+            r_mask = r[mask_right]
+            taper_right = -t0/(r4-r3)*(r_mask-r4)
+            profile[mask_right] = taper_right
+        
+        return profile, None
+    

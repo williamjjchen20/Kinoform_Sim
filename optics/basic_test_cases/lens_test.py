@@ -279,7 +279,7 @@ def test_FZP():
     propagator = AngularSpectrum(simulation)
 
     source = ConstantBeam(energy=E, simulation=simulation, z=0)
-    lens = FZP(wavelength=source.wavelength, f=f, R=R, n=n, simulation=simulation, z=0, positive=True)
+    lens = FZP(wavelength=source.wavelength, f=f, R=R, n=n, simulation=simulation, z=0, p=2, positive=True)
 
     lens.plot_profile(ax=plt.figure().gca(), savedir=str(savedir))
     lens.init_transmittance(source)
@@ -330,8 +330,8 @@ def test_FZP():
     plt.savefig(os.path.join(savedir, "FZP_Lens"))
 
 if __name__ == "__main__":
-    # test_standard_lens_2D()
-    # test_standard_lens_1D()
+    test_standard_lens_2D()
+    test_standard_lens_1D()
     test_lens_xray()
     test_kinoform()
     test_FZP()
