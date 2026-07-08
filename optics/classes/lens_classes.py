@@ -24,7 +24,20 @@ class CircularLens(ThinLens):
     def reset(self):
         self.R = self.R_orig
         super().reset()
-            
+        
+    def reshape(self, R):
+        self.R = R
+        
+        F = ApertureFunctions()
+        if self.simulation.dim == 2:
+            assert R <= self.simulation.Lx/2 and R <= self.simulation.Ly/2 #type: ignore
+            new_aperture_func = lambda X, Y, r=R, **kw: F.circular_mask(X, Y, r=r)
+        else:
+            assert R <= self.simulation.Lx/2
+            new_aperture_func = lambda X, r=R, **kw: F.single_slit_1D(X, r=r)
+        
+        super().reshape(new_aperture_func)
+        
     def plot_profile(self, ax=None, savedir="", labels=None, zoom=False):
         '''
         Plot the side profile (thickness vs. x) of the lens from
@@ -167,17 +180,22 @@ class FZP(CircularLens):
         return zone_widths
         
 class Kinoform(CircularLens):
-    def __init__(self, wavelength, f, R, n, simulation: SimulationObject, z, zone_height: float | None = None, **kwargs):
+    def __init__(self, wavelength, f, R, n, simulation: SimulationObject, z, full=True, zone_height: float | None = None, **kwargs):
         self.wavelength = wavelength
         self.delta = (1.-n).real
         self.height = self.wavelength/self.delta if zone_height is None else zone_height
         self.effective_wavelength = wavelength if zone_height is None else self.delta*self.height
         
         self.zones = (np.sqrt(f**2+R**2)-f)/self.effective_wavelength
-        zone_locations = Kinoform.calc_zone_locations(self.effective_wavelength, f, R, np.arange(int(np.ceil(self.zones))+1))
+        if full: self.zones = int(np.ceil(self.zones))
+        zone_locations = Kinoform.calc_zone_locations(self.effective_wavelength, f, np.arange(self.zones+1))
+        if not full: zone_locations = np.clip(zone_locations, 0, R)
+        
         self.zone_locations = zone_locations
         self.zone_widths = Kinoform.calc_zone_widths(zone_locations)
-        super().__init__(f, R, n, simulation, z,**kwargs)
+        super().__init__(f, zone_locations[-1], n, simulation, z,**kwargs)
+        
+        self.mutated = False
         
     def thickness(self, *args, **kwargs):
         ## Note: Bandwidth limited by requiring wavelength for a specific energy of x-ray
@@ -196,9 +214,8 @@ class Kinoform(CircularLens):
         return self.zone_locations[m]
     
     @staticmethod
-    def calc_zone_locations(wavelength, f, R, m):
+    def calc_zone_locations(wavelength, f, m,  R=np.inf):
         zone_locations = np.sqrt(2*m*f*wavelength + (m*wavelength)**2)
-        zone_locations = np.clip(zone_locations, 0, R)
         return zone_locations
     
     @staticmethod
@@ -335,6 +352,7 @@ class LensErrors():
         '''              
         f = kinoform.f
         delta = kinoform.delta
+        if kinoform.mutated: raise Exception("Kinoform profile has already been mutated!")
         
         ###
         m_total = int(np.ceil(kinoform.zones))
@@ -347,7 +365,7 @@ class LensErrors():
         eps = np.cumsum(err)
 
         assert np.all(eps[:-1] <= eps[1:]) 
-        
+       
         r_m = kinoform.zone_locations
         r_in, r_out = r_m[:-1], r_m[1:]
         
@@ -363,16 +381,12 @@ class LensErrors():
         
         ### New kinoform features
         if mutable:
-            print("Warning: Mutating original aperture profile...")
+            print("Warning: Mutating original lens profile...")
             R_new = kinoform.R + eps[-1]
-            kinoform_new = type(kinoform)(kinoform.wavelength, kinoform.f, R_new, 
-                                          n=kinoform.n, simulation=kinoform.simulation.copy(), 
-                                          z=kinoform.z, **kinoform.kwargs)    
-            kinoform.R = R_new
-            # kinoform.aperture = kinoform_new.aperture
-            kinoform.aperture_field = kinoform_new.aperture_field
+            kinoform.reshape(R=R_new)
             kinoform.zone_locations = np.insert(shifted_outer, 0, 0.)
             kinoform.zone_widths = Kinoform.calc_zone_widths(kinoform.zone_locations)
+            kinoform.mutated = True
                   
         r_effective = r - eps[zone_idx]
         t_eff = (np.sqrt(r_effective**2 + f**2) - f) / delta
@@ -381,7 +395,7 @@ class LensErrors():
         profile = t * (kinoform.aperture_field > 0)
         
         return profile, np.insert(err, 0, 0.)    
-    
+
     @staticmethod
     def zone_removal(kinoform: Kinoform, m: int | np.ndarray = -1, err: float | np.ndarray = 0., direction: str ="out", extend=False, remove_last=False, mutable=False) -> tuple[np.ndarray, np.ndarray | None]:
         '''
@@ -430,7 +444,7 @@ class LensErrors():
             else:
                 errs[ms == last] = 1.1*zone_widths[-1]
 
-        print(errs)
+        # print(errs)
         assert len(errs) == len(ms), "errs must match m in length (or be scalar)"
         assert np.all(ms < len(zone_widths))
 
@@ -449,7 +463,7 @@ class LensErrors():
         removed_full = np.zeros(m_total, dtype=bool)
         for mi, p in zip(ms, errs):
             r_in, r_out = r_m_in[mi], r_m_out[mi]
-            print("Removing...", r_in, r_out)
+            # print("Removing...", r_in, r_out)
             
             width = r_out - r_in
             if p >= width:
@@ -478,15 +492,11 @@ class LensErrors():
                 if np.all(removed_full[m_last+1:]):
                     R_new = float(r_m_out[m_last])
                     if R_new < kinoform.R:
-                        print("Warning: Mutating original aperture profile...")
-                        kinoform_new = type(kinoform)(kinoform.wavelength, kinoform.f, R_new,
-                                                      n=kinoform.n,
-                                                      simulation=kinoform.simulation.copy(),
-                                                      z=kinoform.z, **kinoform.kwargs)
-                        kinoform.R = R_new
-                        kinoform.aperture_field = kinoform_new.aperture_field
+                        print("Warning: Shrinking aperture...")
+                        kinoform.reshape(R=R_new)
                         kinoform.zone_locations = kinoform.zone_locations[:m_last + 2]
                         kinoform.zone_widths = Kinoform.calc_zone_widths(kinoform.zone_locations)
+                        kinoform.zones = len(surviving)
                         profile = profile * (kinoform.aperture_field > 0)
 
         return profile, None
@@ -510,11 +520,15 @@ class LensErrors():
         t_2pi = kinoform.height 
         profile = kinoform.profile
         
-        for r1, r2 in zip(r_start[1:-1], r_end[1:-1]):
+        for r1, r2 in zip(r_start[1:], r_end[1:]):
             mask = (r <= r2) & (r >= r1)
             r_mask = r[mask]
             taper = -t_2pi/(r2-r1)*(r_mask-r2)
             profile[mask] = taper
+            
+        kinoform.reshape(R=r_end[-1])
+        kinoform.zone_locations = r_end
+        kinoform.zone_widths = Kinoform.calc_zone_widths(kinoform.zone_locations)
                 
         return profile, errs
     

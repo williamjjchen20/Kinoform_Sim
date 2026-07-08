@@ -352,11 +352,13 @@ class ThinLens(Aperture):
         self.f = f
         self.n = n
         self.orig_aperture = aperture_func
+        if thickness_func is not None: self.thickness = thickness_func
+        
+        # self._init_aperture(aperture_func, **kwargs)
           
         super().__init__(simulation, z, func=aperture_func, **kwargs)
         self.aperture_field = np.array(self.field)
-        
-        if thickness_func is not None: self.thickness = thickness_func
+    
         self.build_profile(**kwargs)        
         self._transmittance_initialized = False
              
@@ -378,6 +380,14 @@ class ThinLens(Aperture):
             
         self.profile = self.aperture_field * t
         # self.orig_profile=np.array(self.profile)
+        
+    def reshape(self, aperture_func):
+        print("Warning! Resetting changes...")
+        super().__init__(self.simulation, self.z, func=aperture_func, **self.kwargs)
+        self.aperture_field = np.array(self.field)
+    
+        self.build_profile(**self.kwargs)        
+        self._transmittance_initialized = False
         
     ## transmittance features
     def transmittance(self, wavelength):
