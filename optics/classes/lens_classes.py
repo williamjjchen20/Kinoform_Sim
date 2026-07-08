@@ -566,3 +566,60 @@ class LensErrors():
         
         return profile, None
     
+    @staticmethod
+    def zone_quantization(lens: Kinoform, points, m=-1) -> tuple[np.ndarray, np.ndarray | None]:
+        '''
+        Quantize the profile within one or more zones using user-supplied
+        (radius, height) points. Within each target zone, the profile is
+        the piecewise-linear interpolation of the anchors that fall inside that
+        zone, extended to the zone boundaries by anchoring
+            (r_left, 0) and (r_right, h)   (h = lens.height, the 2pi step).
+        Untargeted zones are left untouched.
+
+        Parameters
+        ----------
+        lens : Kinoform | FZP
+            Lens whose zone_locations define the bands.
+        points : array-like, shape (K, 2)
+            Anchor (radius, height) pairs. Anchors outside every targeted zone
+            are ignored.
+        m : int | array-like of int, default -1
+            Zone indices to quantize. Negative indices count from the last band.
+        '''
+        h = lens.height
+        zone_locations = np.asarray(lens.zone_locations)
+        r_left_all, r_right_all = zone_locations[:-1], zone_locations[1:]
+        m_total = int(np.ceil(lens.zones))
+
+        ms = np.atleast_1d(np.asarray(m)).astype(int)
+        ms = np.where(ms < 0, m_total + ms, ms)
+        assert np.all((ms >= 0) & (ms < m_total)), f"m must be in [0, {m_total})"
+        ms = np.unique(ms)
+
+        r_left = r_left_all[ms]
+        r_right = r_right_all[ms]
+        M = ms.size
+
+        if lens.dim == 1:
+            r = np.abs(lens.grid)
+        else:
+            X, Y = lens.grid
+            r = np.sqrt(X**2 + Y**2)
+            
+        assert (len(points) == len(ms) == len(r_left) == len(r_right))
+        profile = np.array(lens.profile)
+        
+        for points, mi, r_l, r_r in zip(points, ms, r_left, r_right):
+            rs, hs = points[:,0], points[:,1]
+            assert np.all(rs <= r_r) and np.all(rs >= r_l)
+            mask = (r >= r_l) & (r < r_r)
+            r_mask = r[mask] 
+
+            h_mask = np.interp(r_mask, rs, hs)
+            profile[mask] = h_mask
+        
+        profile = profile * (lens.aperture_field > 0)
+        return profile, None
+
+
+    
