@@ -567,7 +567,7 @@ class LensErrors():
         return profile, None
     
     @staticmethod
-    def zone_quantization(lens: Kinoform, points, m=-1) -> tuple[np.ndarray, np.ndarray | None]:
+    def zone_quantization(lens: Kinoform, points, m : int | np.ndarray=-1) -> tuple[np.ndarray, np.ndarray | None]:
         '''
         Quantize the profile within one or more zones using user-supplied
         (radius, height) points. Within each target zone, the profile is
@@ -620,6 +620,111 @@ class LensErrors():
         
         profile = profile * (lens.aperture_field > 0)
         return profile, None
+    
+    @staticmethod
+    def kinoform_zone_warping(kinoform: Kinoform, R_min=None, R_max=None, beam_width=1e-8, mag=1.):
+        '''
+        Warp thin outer zones toward an FZP-like rectangle by resampling them
+        with only `ns = floor(zone_width / beam_width)` interior anchors, so
+        that the linear interpolation done by `zone_quantization` collapses
+        to a step as the zone approaches the beam width. Wider zones (below
+        `tol`) are left untouched.
+
+        Endpoint anchors are sampled from the current `kinoform.profile` at
+        each zone's boundary, so no artificial 0/h endpoints are imposed.
+        '''
+        h = kinoform.height
+        R = kinoform.R
+        zone_locations = np.asarray(kinoform.zone_locations)
+        zone_widths = np.asarray(kinoform.zone_widths)
+        outer_width = zone_widths[-1]
+        r_left_all, r_right_all = zone_locations[:-1], zone_locations[1:]
+        
+        m_total = int(np.ceil(kinoform.zones))
+        ms = np.arange(m_total)
+        
+        if kinoform.dim == 1:
+            r = np.abs(kinoform.grid)
+        else:
+            X, Y = kinoform.grid
+            r = np.sqrt(X**2 + Y**2)
+            
+        if R_min is None: R_min = 0
+        if R_max is None: R_max = R
+        # mask1 = (zone_widths < max_width) & (zone_widths >= min_width)
+        mask = (r_left_all < R_max) & (r_left_all >= R_min)
+        
+        # per-zone anchor count: thinner zones get fewer interior samples,
+        # so the piecewise-linear fill flattens toward a rectangle.
+        ns = np.floor(zone_widths / beam_width).astype(int)
+        # print(ns)
+
+        profile = np.asarray(kinoform.profile)
+        points = []
+        ms_target = ms[mask]
+        r_left, r_right = r_left_all[mask], r_right_all[mask]
+        # print(ms_target)
+        ## zone1 points
+        for mi, r_l, r_r in zip(ms_target, r_left, r_right):
+            n = max(ns[mi], 0)
+
+            # interior anchor radii, evenly spaced strictly inside (r_l, r_r)
+            xs = np.arange(1, int(n)+1)
+            if n > 0:
+                # interp n points between r_l and r_r
+                interior_r = r_l + xs/(n+1) * (r_r - r_l)
+            else:
+                interior_r = np.empty(0)
+
+            # restrict nearest-grid lookup to samples inside this zone so a
+            # slightly-out-of-band grid point in the neighbouring zone can't
+            # be chosen (which would leak a spurious spike from that zone).
+            in_zone = (r.ravel() >= r_l) & (r.ravel() < r_r)
+            zone_idx = np.flatnonzero(in_zone)
+            zone_r = r.ravel()[zone_idx]
+            zone_profile = profile.ravel()[zone_idx]
+
+            def sample(rq):
+                if zone_idx.size == 0:
+                    return 0.0  # zone has no grid samples; fall back to 0
+                # clamp query into the in-zone radius range for safety
+                rq_c = np.clip(rq, zone_r.min(), zone_r.max())
+                local = np.argmin(np.abs(zone_r - rq_c))
+                return zone_profile[local]
+
+            h_l = 0 #sample(r_l)
+            h_r = h #sample(r_r)
+            
+            ## logistic sampling function for height
+            # p in (0, 1]: fraction of the zone that a single beam spans.
+            # p -> 0 (wide zones)  => mag -> 0  => uniform (linear) sampling.
+            # p -> 1 (beam-limited) => mag -> inf => sigmoid becomes a step,
+            # collapsing all interior anchors to a single radius for an FZP-like rectangle.
+            width = zone_widths[mi]
+            p = min(beam_width / width, 1.0)
+            mag = p / (1.0 - p + 1e-12)
+            # print("Mag:", mag)
+
+            a = (r_l-r_r)/(0.5-1/(1+np.exp(-(int(n)+1)*mag)))
+            b = r_l-a/2
+ 
+            sampling_r = a/(1+np.exp(-mag*xs))+b
+            interior_h = np.array([sample(rq) for rq in sampling_r])
+
+            zone_pts = np.column_stack([
+                np.concatenate([[r_l], interior_r, [r_r]]),
+                np.concatenate([[h_l], interior_h, [h_r]]),
+            ])
+            points.append(zone_pts)
+
+        if len(ms_target) == 0:
+            return kinoform.profile, None
+        # print(points)
+        profile, _ = LensErrors.zone_quantization(kinoform, points, m=ms_target)
+        return profile, None
+        
+        
+        
 
 
     
