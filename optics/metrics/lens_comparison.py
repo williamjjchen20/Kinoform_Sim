@@ -117,11 +117,17 @@ def plot_comparison_1D(results, savepath):
 
     for i, (name, (wave, lens, labels)) in enumerate(results.items()):
         
-        lens.plot_profile(ax=ax[i, 0], labels=labels)
+        try:
+            zones = labels.get("zones")
+            R_min = lens.zone_locations[-zones]
+        except:
+            R_min = -lens.R
+            
+        lens.plot_profile(ax=ax[i, 0], labels=labels, R_min = R_min)
 
         ## Lens phase plot
         lens_labels = dict(labels)
-        lens_labels["xlim"] = None
+        lens_labels["xlim"] = (-lens.R/3, lens.R/3)
         lens_labels["ylim"] = None
         lens_labels["y_scale_factor"] = 1.
         lens_ax = lens.view(ax=ax[i, 1], labels=lens_labels, color=cmap_cycle(i%10))
@@ -159,14 +165,20 @@ def plot_comparison_2D(results, savepath, extend=False):
 
     for i, (name, (wave, lens, labels)) in enumerate(results.items()):
         # prof_fig, prof_ax = plt.subplots()
+        try:
+            zones = labels.get("zones")
+            R_min = lens.zone_locations[-zones]
+        except:
+            R_min = -lens.R
+            
+        lens.plot_profile(ax=ax[i, 0], labels=lens_labels, R_min=R_min)
         
         ## Lens phase plot
         lens_labels = dict(labels)
         lens_labels["extent"] = [-2*lens.R, 2*lens.R, -2*lens.R, 2*lens.R]
         lens_labels["xlim"] = None
         lens_labels["ylim"] = None
-        
-        lens.plot_profile(ax=ax[i, 0], labels=lens_labels)
+    
         lens_ax = lens.view(ax=ax[i, 1], labels=lens_labels, show_cbar=True)
         lens_ax.set(title=f"{name} Lens Phase")
 
@@ -202,12 +214,12 @@ def test_compare_xray_lenses(lens_dict, N, dim, extend=False):
     print("Comparing Lenses...")
     
     # Parameters
-    Lx = 5e-4
-    Ly = 5e-4 if dim == 2 else None
+    Lx = 8e-4
+    Ly = 8e-4 if dim == 2 else None
     Lz = 10000
-    E = 8e3       # eV
-    f = 1.        # m
-    R = 2e-4       # m
+    E = 8e3        # eV
+    f = 0.1        # m
+    R = 1e-4       # m
     n = xrl.Refractive_Index("Si", E / 1000, 2.329)
     
     print(f"Refractive index n = {n}")
@@ -221,7 +233,7 @@ def test_compare_xray_lenses(lens_dict, N, dim, extend=False):
     m = collect_metrics(P_in, ref_source, ref_lens, "reference")
     ref_fwhm = m.get("fwhm", np.inf)
     ref_I = m.get("I_max", 1.)
-    print(ref_I)
+    # print(ref_I)
     if ref_fwhm < Lx:
         Lx_zoom = ref_fwhm*10
         Rx = Lx_zoom/Lx
@@ -244,7 +256,9 @@ def test_compare_xray_lenses(lens_dict, N, dim, extend=False):
         sim = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=N)
         propagator = ScaledAngularSpectrum(sim, Rx=Rx, Ry=Ry)
         
-        cls, err_func, zone_height = lens_dict[name]
+        entry = lens_dict[name]
+        cls, err_func, zone_height = entry[0], entry[1], entry[2]
+        display_zones = entry[3] if len(entry) > 3 else None
         source, lens, P_in = run_lens(
             cls, sim, propagator, E, f, R, n,
             err_func=err_func, zone_height=zone_height
@@ -263,6 +277,7 @@ def test_compare_xray_lenses(lens_dict, N, dim, extend=False):
             "ylim": (0, 1.5*ref_I),
             "yscale": "linear",
             "y_scale_factor": 1e6,
+            "zones": display_zones,
             "title": rf"{name} profile (f={lens.f:.3g} m, R={lens.R *1e6:.3g} $\mu m$)"
         }
         
@@ -324,12 +339,18 @@ def take_user_input():
             zh_str = input("  > Zone height (blank = default λ/2δ for FZP, λ/δ for Kinoform): ").strip()
             zone_height = float(zh_str) if zh_str else None
 
-        lens_dict[key] = [lens_dict_key_cls, None, zone_height]
+        # Number of outer zones to display in plot_profile (Kinoform / FZP only)
+        display_zones = None
+        if lens in ("Kinoform", "FZP"):
+            dz_str = input("  > Outer zones to display in profile plot (blank = all): ").strip()
+            display_zones = int(dz_str) if dz_str else None
+
+        lens_dict[key] = [lens_dict_key_cls, None, zone_height, display_zones]
 
         # Errors (multiple allowed)
         print()
         print(f"  Errors for {key}  (blank Error Type to stop adding)")
-        print("  Available: Cap Height, Cap Floor, Periodic Etch, Random Etch, Gaussian Etch, Removal, Taper")
+        print("  Available: Cap Height, Cap Floor, Periodic Etch, Random Etch, Gaussian Etch, Removal, Taper, Zone Warping")
         errs = []
 
         def _opt(prompt, cast, default):
@@ -379,6 +400,13 @@ def take_user_input():
                         errs.append(functools.partial(LensErrors.kinoform_sidewall_taper, err=err, proportion=proportion))
                     else:
                         raise Exception("Phase wrapped lens required!")
+                case "Zone Warping":
+                    if lens != "Kinoform": raise Exception("Kinoform required for zone warping!")
+                    beam_width = float(input("      Beam width [m]: "))
+                    R_min = _opt("      R_min [blank = 0]: ", float, None)
+                    R_max = _opt("      R_max [blank = lens R]: ", float, None)
+                    # mag = _opt("      Magnitude [1.0]: ", float, 1.)
+                    errs.append(functools.partial(LensErrors.kinoform_zone_warping, beam_width=beam_width, R_min=R_min, R_max=R_max))
                         
                 case "":
                     break
@@ -390,7 +418,7 @@ def take_user_input():
         # Complete
         print()
         print(RULE)
-        print(f"  Added {key}: errors={len(errs)}, zone_height={lens_dict[key][2]}")
+        print(f"  Added {key}: errors={len(errs)}, zone_height={lens_dict[key][2]}, display_zones={lens_dict[key][3]}")
         print(RULE)
         iter_count += 1
 

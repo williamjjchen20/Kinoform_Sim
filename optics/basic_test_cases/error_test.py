@@ -307,11 +307,11 @@ def test_zone_warping():
 def test_multierror():
     print("Testing Kinoform Multierror (1D)...")
     
-    Lx, Lz = 5e-4, 10000
+    Lx, Lz = 6e-4, 10000
     N = 100000
 
     E = 8.e3
-    f = 1.
+    f = 0.5
     R = 2e-4
     n = xrl.Refractive_Index("Si", E / 1000, 2.329)
 
@@ -321,7 +321,9 @@ def test_multierror():
     lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n,
                     simulation=simulation, z=0, full=True)
     
-    beam_width = 5e-7
+    print(lens.R)
+    
+    beam_width = 3e-7
 
     print("Kinoform Height:", lens.height)
     print(lens.zone_widths[-1])
@@ -350,7 +352,7 @@ def test_multierror():
     ax.axhline(0, color="black", lw=0.5)
     ax.set(xlabel="x [um]", ylabel="thickness [m]",
            title=f"Kinoform profile")
-    ax.set_xlim(0.9*lens.R*1e6, 1.01*lens.R*1e6)
+    ax.set_xlim(0.95*lens.R*1e6, 1.01*lens.R*1e6)
 
     out = savedir / f"Kinoform_error_profile.png"
     fig.savefig(out)

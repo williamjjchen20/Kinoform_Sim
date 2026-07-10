@@ -38,7 +38,7 @@ class CircularLens(ThinLens):
         
         super().reshape(new_aperture_func)
         
-    def plot_profile(self, ax=None, savedir="", labels=None, zoom=False):
+    def plot_profile(self, ax=None, savedir="", labels=None, R_min=None, R_max=None):
         '''
         Plot the side profile (thickness vs. x) of the lens from
         `self.profile`. For 2D simulations, takes the central row.
@@ -85,7 +85,10 @@ class CircularLens(ThinLens):
         ax.plot(x_plot, t_plot, color="navy", lw=1)
         ax.set(xlabel=xlabel, ylabel=ylabel, title=title,
                xscale=xscale, yscale=yscale)
-        ax.set_xlim(-self.R * x_scale_factor, self.R * x_scale_factor)
+    
+        if R_min is None: R_min = -self.R
+        if R_max is None: R_max = self.R
+        ax.set_xlim(R_min * x_scale_factor, R_max* x_scale_factor)
         ax.axhline(0, color="black", lw=0.5)
         
         if savedir:
@@ -102,7 +105,7 @@ class OpticalLens(CircularLens):
         self.R2 = R2
         assert (R1 != R2)
         self.f = 1/((n-1)*(1/R1-1/R2))
-        print(self.f)
+        # print(self.f)
         super().__init__(self.f, R, n, simulation, z,**kwargs)
         
     def thickness(self, *args, **kwargs):
@@ -210,6 +213,7 @@ class Kinoform(CircularLens):
         self.zone_widths = Kinoform.calc_zone_widths(self.zone_left, self.zone_right)
         super().__init__(f, zone_locations[-1], n, simulation, z,**kwargs)
         
+        self.R = zone_locations[-1]
         self.mutated = False
         
     def thickness(self, *args, **kwargs):
@@ -711,7 +715,7 @@ class LensErrors():
         return profile, None
     
     @staticmethod
-    def kinoform_zone_warping(kinoform: Kinoform, R_min=None, R_max=None, beam_width=1e-8, mag=1.):
+    def kinoform_zone_warping(kinoform: Kinoform, R_min=None, R_max=None, beam_width=1e-8):
         '''
         Warp thin outer zones toward an FZP-like rectangle by resampling them
         with only `ns = floor(zone_width / beam_width)` interior anchors, so
@@ -745,6 +749,7 @@ class LensErrors():
         
         # per-zone anchor count: thinner zones get fewer interior samples,
         # so the piecewise-linear fill flattens toward a rectangle.
+        beam_width = min(beam_width, zone_widths[-1])
         ns = np.floor(zone_widths / beam_width).astype(int)
         # print(ns)
 

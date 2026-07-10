@@ -305,5 +305,33 @@ def main():
         case _:
             print("Skipping cap floor.")
             
+    ### Zone warping (sweep beam_width)
+    match input("Analyze zone warping? (y/n): "):
+        case "y":
+            err_values = np.logspace(-8, -6, 10)
+            labels = {
+                    "xlabel": [r"Beam Width $[\mu m]$"] * len(metrics),
+                    "ylabel": ["Focal Efficiency", r"FWHM $[\mu m]$", "Strehl Ratio"],
+                    "xscale": ["log"] * len(metrics),
+                    "yscale": ["linear", "linear", "linear"],
+                    "x_scale_factor":  1e6,
+                    "y_scale_factor": [1.0, 1e6, 1.0],
+                    "label": [f"E={E_i/1000} keV" for E_i in E_range],
+                    "title": f"Zone Warping for E={E/1000} keV Kinoform",
+                    "marker": ["o", "^", "s", "d", "x"],
+                    "color": ["red", "orange", "green", "blue", "purple"]
+                }
+            out = savedir / "zone_warping_vs_intensity.png"
+            error_metrics(
+                source_factory, lens_factory, propagator,
+                LensErrors.kinoform_zone_warping, "beam_width", err_values,
+                metrics=metrics,
+                E_range=E_range,
+                labels=labels,
+                savepath=out,
+            )
+        case _:
+            print("Skipping zone warping.")
+            
 if __name__ == "__main__":
     main()
