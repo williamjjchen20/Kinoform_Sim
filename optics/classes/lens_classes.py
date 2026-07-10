@@ -453,7 +453,7 @@ class LensErrors():
         return profile, np.insert(err, 0, 0.)    
     
     @staticmethod
-    def zone_placement(lens: Kinoform | FZP, err, mutable=False):
+    def zone_placement(lens: Kinoform | FZP, err, verbose=False):
         m_total = int(np.ceil(lens.zones))
         # cumulative per-zone shift: eps[m] is applied to outer boundary r_m[m]
         if isinstance(err, (int, float)): 
@@ -500,8 +500,8 @@ class LensErrors():
             profile[mask_new] = np.interp(r_query, r_src, h_src)
             
         # if mutable:
-        print("Warning: Mutating original lens profile...")
-        # R_new = lens.R + eps[-1]
+        if verbose: print("Warning: Mutating original lens profile...")
+        
         r_left_new= r_left_all + eps
         r_right_new = r_right_all + eps
         lens.reshape(r_left_new, r_right_new)
@@ -616,7 +616,7 @@ class LensErrors():
     @staticmethod
     def kinoform_sidewall_taper(kinoform: Kinoform, err: float | np.ndarray, proportion=1.) -> tuple[np.ndarray, np.ndarray | None]:
         
-        errs = kinoform.add_error(LensErrors.zone_placement, err=err, **{"mutable": True})
+        errs = kinoform.add_error(LensErrors.zone_placement, err=err)
         # print(errs, kinoform.zones, kinoform.zone_locations, sep="\n")
         # print(errs)
         assert errs is not None

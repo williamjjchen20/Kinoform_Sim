@@ -439,7 +439,7 @@ if __name__ == "__main__":
     # test_zone_removal(1e-6)
     # test_zone_placement(1e-6)
     # test_taper(1e-6)
-    # # test_zone_quantization()
+    # test_zone_quantization()
     # test_zone_warping()
     # test_multierror()
     # test_reference()
