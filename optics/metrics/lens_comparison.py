@@ -214,8 +214,8 @@ def test_compare_xray_lenses(lens_dict, N, dim, extend=False):
     print("Comparing Lenses...")
     
     # Parameters
-    Lx = 8e-4
-    Ly = 8e-4 if dim == 2 else None
+    Lx = 3e-4
+    Ly = 3e-4 if dim == 2 else None
     Lz = 10000
     E = 8e3        # eV
     f = 0.1        # m

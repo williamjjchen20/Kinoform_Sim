@@ -13,10 +13,9 @@ import xraylib as xrl
 from ..optics import SimulationObject, Waveform, AngularSpectrum, ConstantBeam, Kinoform
 
 def plot_sideview(simulation: SimulationObject, z_max, dz):
-    propagator = simulation.propagator 
     source = simulation.objects["source"]
     lens = simulation.objects["lens"]
-    
+    propagator = AngularSpectrum(simulation=simulation)
     Nz = int(z_max//dz)
     print("Nz:", Nz)
     print("Simulating ...")
@@ -55,12 +54,10 @@ if __name__ == "__main__":
     savedir.mkdir(parents=True, exist_ok=True)
 
     Lx, Lz, N = 1.5e-4, 1.5, 2048
-    E, f, R = 8.5e3, 1.0, 5e-5
+    E, f, R = 8.e3, 1.0, 5e-5
     n = xrl.Refractive_Index("Si", E / 1000, 2.329)
 
     sim = SimulationObject(Lx=Lx, Ly=Lx, Lz=Lz, Nx=N, Ny=N)
-    sim.add_propagator(AngularSpectrum(sim))
-
     source = ConstantBeam(energy=E, simulation=sim, z=0)
     lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n,
                     simulation=sim, z=0.1)

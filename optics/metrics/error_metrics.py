@@ -3,7 +3,7 @@ import scipy.constants as const
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import xraylib as xrl
-import os, functools, inspect
+import os, functools, inspect, argparse
 from pathlib import Path
 
 from ..propagators import *
@@ -13,6 +13,12 @@ from .metrics import *
 script_dir = Path(__file__).resolve().parent
 savedir = (script_dir / "./results").resolve()
 savedir.mkdir(parents=True, exist_ok=True)
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-N", type=int, required=True,
+                    help="grid resolution (Nx, and Ny when dim=2)")
+parser.add_argument("--dim", type=int, choices=[1, 2], default=2,
+                    help="simulation dimensionality (1 or 2)")
     
 def error_metrics(source_factory, lens_factory, propagator, error_func, sweep_param,
                   err_values, metrics=("P_eff", "FWHM", "Strehl"),
@@ -131,10 +137,13 @@ def plot_sweep(err, vals, labels, savepath):
     print(f"Saved sweep figure to {savepath}.")
 
 def main():
-    Lx, Lz, N = 1.5e-4, 10000, 2048
+    args = parser.parse_args()
+    N = args.N
+    dim = args.dim
+
+    Lx, Lz = 1.5e-4, 10000
     # SIM = {"Lx": Lx, "Ly": Lx, "Nx": N, "Ny": N, "Lz": Lz}
     E, f, R = 8.e3, 1.0, 5e-5
-    dim = 2
     
     n = xrl.Refractive_Index("Si", E / 1000, 2.329)
 
@@ -200,7 +209,7 @@ def main():
                     "x_scale_factor":  -1e6,                 # m -> um
                     "y_scale_factor": [1.0, 1e6, 1.0],     # FWHM m -> um
                     "label": [f"E={E_i/1000} keV" for E_i in E_range],
-                    "title": f"Periodic Etch for E={E/1000} keV Kinoform",
+                    "title": f"Periodic Etch for (E={E/1000} keV, f={f} m, R={R*1e6} m) Kinoform",
                     "marker": ["o", "^", "s", "d", "x"],
                     "color": ["red", "orange", "green", "blue", "purple"]
                 }
@@ -230,7 +239,7 @@ def main():
                     "x_scale_factor":  1e6,                 # m -> um
                     "y_scale_factor": [1.0, 1e6, 1.0],
                     "label": [f"E={E_i/1000} keV" for E_i in E_range],
-                    "title": f"Sidewall Taper (proportion={p}) for E={E/1000} keV Kinoform",
+                    "title": f"Sidewall Taper (proportion={p}) for (E={E/1000} keV, f={f} m, R={R*1e6} m) Kinoform",
                     "marker": ["o", "^", "s", "d", "x"],
                     "color": ["red", "orange", "green", "blue", "purple"]
                 }
@@ -259,7 +268,7 @@ def main():
                     "x_scale_factor":  1.0,
                     "y_scale_factor": [1.0, 1e6, 1.0],
                     "label": [f"E={E_i/1000} keV" for E_i in E_range],
-                    "title": f"Cap Height for E={E/1000} keV Kinoform",
+                    "title": f"Cap Height for (E={E/1000} keV, f={f} m, R={R*1e6} m) Kinoform",
                     "marker": ["o", "^", "s", "d", "x"],
                     "color": ["red", "orange", "green", "blue", "purple"]
                 }
@@ -288,7 +297,7 @@ def main():
                     "x_scale_factor":  1.0,
                     "y_scale_factor": [1.0, 1e6, 1.0],
                     "label": [f"E={E_i/1000} keV" for E_i in E_range],
-                    "title": f"Cap Floor for E={E/1000} keV Kinoform",
+                    "title": f"Cap Floor for (E={E/1000} keV, f={f} m, R={R*1e6} m) Kinoform",
                     "marker": ["o", "^", "s", "d", "x"],
                     "color": ["red", "orange", "green", "blue", "purple"]
                 }
@@ -310,14 +319,14 @@ def main():
         case "y":
             err_values = np.logspace(-8, -6, 10)
             labels = {
-                    "xlabel": [r"Beam Width $[\mu m]$"] * len(metrics),
+                    "xlabel": [r"Beam Width $[nm]$"] * len(metrics),
                     "ylabel": ["Focal Efficiency", r"FWHM $[\mu m]$", "Strehl Ratio"],
                     "xscale": ["log"] * len(metrics),
                     "yscale": ["linear", "linear", "linear"],
-                    "x_scale_factor":  1e6,
+                    "x_scale_factor":  1e9,
                     "y_scale_factor": [1.0, 1e6, 1.0],
                     "label": [f"E={E_i/1000} keV" for E_i in E_range],
-                    "title": f"Zone Warping for E={E/1000} keV Kinoform",
+                    "title": f"Zone Warping for (E={E/1000} keV, f={f} m, R={R*1e6} m) Kinoform",
                     "marker": ["o", "^", "s", "d", "x"],
                     "color": ["red", "orange", "green", "blue", "purple"]
                 }

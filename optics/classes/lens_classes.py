@@ -135,7 +135,33 @@ class XrayParabolicLens(CircularLens):
     
         return t_parabolic
     
-class FZP(CircularLens):
+class PhaseWrappedLens(CircularLens):
+    '''
+    Shared base for phase-wrapped diffractive lenses (FZP, Kinoform).
+
+    Subclasses are expected to set (typically in their own __init__ before
+    calling super().__init__):
+      - self.wavelength : design wavelength [m]
+      - self.delta      : 1 - Re(n)
+      - self.height     : full phase-step height [m]
+      - self.zones      : (fractional) number of zones inside R
+      - self.zone_locations : 1D array of zone-boundary radii (length zones+1)
+      - self.zone_widths    : zone_locations[1:] - zone_locations[:-1]
+
+    This class intentionally does not define __init__ or thickness so the
+    existing FZP / Kinoform constructors and profile logic are untouched.
+    '''
+        
+    def mth_zone(self, m):
+        self.zone_locations: np.ndarray
+        return self.zone_locations[m]
+
+    @staticmethod
+    def calc_zone_widths(zone_locations):
+        assert len(zone_locations) > 1
+        return zone_locations[1:] - zone_locations[:-1]
+
+class FZP(PhaseWrappedLens):
     def __init__(self, wavelength, f, R, n, simulation: SimulationObject, z, zone_height: float | None = None, p=2, positive=True, **kwargs):
         self.wavelength = wavelength
         self.delta = (1.-n).real
@@ -195,7 +221,7 @@ class FZP(CircularLens):
         zone_widths = zone_right - zone_left
         return zone_widths
         
-class Kinoform(CircularLens):
+class Kinoform(PhaseWrappedLens):
     def __init__(self, wavelength, f, R, n, simulation: SimulationObject, z, full=True, zone_height: float | None = None, **kwargs):
         self.wavelength = wavelength
         self.delta = (1.-n).real
@@ -479,9 +505,6 @@ class LensErrors():
         r_left_new= r_left_all + eps
         r_right_new = r_right_all + eps
         lens.reshape(r_left_new, r_right_new)
-        # lens.zone_locations = np.insert(r_right_all + eps, 0, 0.)
-        # lens.zone_widths = lens.calc_zone_widths(lens.zone_locations)
-        # lens.mutated = True
         profile *= lens.aperture_field > 0
             
         return profile, err
@@ -584,9 +607,6 @@ class LensErrors():
                     if R_new < kinoform.R:
                         print("Warning: Shrinking aperture...")
                         kinoform.reshape(r_m_in[:m_last+1], r_m_out[:m_last+1])
-                        # kinoform.reshape(R=R_new)
-                        # kinoform.zone_locations = kinoform.zone_locations[:m_last + 2]
-                        # kinoform.zone_widths = Kinoform.calc_zone_widths(kinoform.zone_locations)
                         kinoform.zones = len(surviving)
         
         profile = profile * (kinoform.aperture_field > 0)
@@ -622,9 +642,7 @@ class LensErrors():
             profile[mask] = taper
             
         kinoform.reshape(kinoform.zone_left, r_end)
-        # kinoform.zone_locations = r_end
-        # kinoform.zone_widths = Kinoform.calc_zone_widths(kinoform.zone_locations)
-                
+
         return profile, errs
     
     @staticmethod

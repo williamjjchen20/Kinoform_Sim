@@ -282,10 +282,6 @@ def test_zone_warping():
     print(lens.zone_widths[-1], beam_width/lens.zone_widths[-1])
     # lens.add_error(LensErrors.kinoform_sidewall_taper, err=1e-8, proportion=0.3)
     lens.add_error(LensErrors.kinoform_zone_warping, R_min=0, R_max=R, beam_width=beam_width)
-    # lens.add_error(LensErrors.kinoform_zone_warping, R_min=0.5*R, R_max=0.7*R, mag=0.015)
-    # lens.add_error(LensErrors.kinoform_zone_warping, R_min=0.7*R, R_max=R, mag=0.06)
-    # lens.add_error(LensErrors.kinoform_zone_warping, beam_width=beam_width)
-    
     lens.add_error(LensErrors.cap_floor, h=0.02, proportion=True)
 
 
@@ -333,14 +329,6 @@ def test_multierror():
     lens.add_error(LensErrors.cap_floor, h=0.01, proportion=True)
     lens.add_error(LensErrors.cap_height, h=0.98, proportion=True)
     print(lens.zone_locations[-1], lens.R)
-    # print(lens.zone_locations)
-
-    # print(lens.zone_locations)
-    # lens.add_error(LensErrors.zone_removal, remove_last=True, mutable=True)
-    # lens.reset()
-    # # print(lens.zone_locations)
-    
-    # lens.add_error(LensErrors.kinoform_sidewall_taper, err=1e-6)
     
     print("Outer Zone Width:", lens.zone_widths[-1])
     
@@ -422,9 +410,8 @@ def test_FZP_error():
     lens = FZP(wavelength=source.wavelength, f=f, R=R, n=n,
                     simulation=simulation, z=0, positive=True)
     print("FZP Height:", lens.height)
-    # print(lens.zone_locations)
-    print(lens.zone_locations)
-    lens.add_error(LensErrors.FZP_sidewall_taper, err=1e-7)
+
+    lens.add_error(LensErrors.FZP_sidewall_taper, err=1e-6)
 
     print("Outer Zone Width:", lens.zone_widths[-1])
     
@@ -454,9 +441,9 @@ if __name__ == "__main__":
     # test_taper(1e-6)
     # # test_zone_quantization()
     # test_zone_warping()
-    test_multierror()
+    # test_multierror()
     # test_reference()
-    # test_FZP_error()
+    test_FZP_error()
 
     
     

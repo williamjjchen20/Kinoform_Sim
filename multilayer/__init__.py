@@ -1,2 +1,2 @@
 from .classes import *
-from .physics import *
+# from .physics import *
