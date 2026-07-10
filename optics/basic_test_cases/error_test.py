@@ -152,7 +152,7 @@ def test_zone_placement(max_err):
 
     E = 8.e3
     f = 1.0
-    R = 5e-5
+    R = 3e-5
     n = xrl.Refractive_Index("Si", E / 1000, 2.329)
 
     simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz)
@@ -160,9 +160,12 @@ def test_zone_placement(max_err):
     source = ConstantBeam(energy=E, simulation=simulation, z=0)
     lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n,
                     simulation=simulation, z=0)
+    
+    print(lens.zone_left, lens.zone_right, sep="\n")
 
-    lens.add_error(LensErrors.kinoform_zone_placement, err=max_err, gap=True)
-    # print(lens.R)
+    lens.add_error(LensErrors.zone_placement, err=[1e-6, 1e-6, 1e-6], mutable=True)
+    
+    print(lens.zone_left, lens.zone_right, sep="\n")
     
     fig, ax = plt.subplots(figsize=(8, 4))
     x = lens.grid
@@ -195,7 +198,9 @@ def test_taper(max_err):
     lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n,
                     simulation=simulation, z=0)
     
-    lens.add_error(LensErrors.kinoform_sidewall_taper, err=max_err)
+    print(lens.zone_right)
+    
+    lens.add_error(LensErrors.kinoform_sidewall_taper, err=max_err, proportion=1.)
     # print(lens.R)
     
     fig, ax = plt.subplots(figsize=(8, 4))
@@ -264,7 +269,7 @@ def test_zone_warping():
     E = 8.e3
     f = 1.0
     R = 1e-4
-    n = xrl.Refractive_Index("C5H8O2", E / 1000, 1.18)
+    n = xrl.Refractive_Index("Si", E / 1000, 2.329)
 
     simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz)
 
@@ -272,7 +277,7 @@ def test_zone_warping():
     lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n,
                     simulation=simulation, z=0)
 
-    beam_width =1.5e-6
+    beam_width = 1.5e-6
     
     print(lens.zone_widths[-1], beam_width/lens.zone_widths[-1])
     # lens.add_error(LensErrors.kinoform_sidewall_taper, err=1e-8, proportion=0.3)
@@ -302,24 +307,34 @@ def test_zone_warping():
 def test_multierror():
     print("Testing Kinoform Multierror (1D)...")
     
-    Lx, Lz = 9e-4, 10000
+    Lx, Lz = 5e-4, 10000
     N = 100000
 
     E = 8.e3
     f = 1.
-    R = 3.6e-5
-    n = xrl.Refractive_Index("C5H8O2", E / 1000, 1.18)
+    R = 2e-4
+    n = xrl.Refractive_Index("Si", E / 1000, 2.329)
 
     simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz)
 
     source = ConstantBeam(energy=E, simulation=simulation, z=0)
     lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n,
                     simulation=simulation, z=0, full=True)
+    
+    beam_width = 5e-7
 
     print("Kinoform Height:", lens.height)
-    lens.add_error(LensErrors.kinoform_sidewall_taper, err=1e-6,proportion=0.8)
-    print(lens.zone_locations)
-    lens.add_error(LensErrors.zone_removal, remove_last=True, mutable=True)
+    print(lens.zone_widths[-1])
+    lens.add_error(LensErrors.zone_placement, err=1e-7)
+    lens.add_error(LensErrors.kinoform_zone_warping, R_min=0, R_max=lens.R, beam_width=beam_width)
+    lens.add_error(LensErrors.kinoform_sidewall_taper, err=1e-7,proportion=1.)
+    lens.add_error(LensErrors.cap_floor, h=0.01, proportion=True)
+    lens.add_error(LensErrors.cap_height, h=0.98, proportion=True)
+    print(lens.zone_locations[-1], lens.R)
+    # print(lens.zone_locations)
+
+    # print(lens.zone_locations)
+    # lens.add_error(LensErrors.zone_removal, remove_last=True, mutable=True)
     # lens.reset()
     # # print(lens.zone_locations)
     
@@ -335,7 +350,7 @@ def test_multierror():
     ax.axhline(0, color="black", lw=0.5)
     ax.set(xlabel="x [um]", ylabel="thickness [m]",
            title=f"Kinoform profile")
-    ax.set_xlim(0*lens.R*1e6, 1.01*lens.R*1e6)
+    ax.set_xlim(0.9*lens.R*1e6, 1.01*lens.R*1e6)
 
     out = savedir / f"Kinoform_error_profile.png"
     fig.savefig(out)
@@ -435,9 +450,9 @@ if __name__ == "__main__":
     # test_zone_removal(1e-6)
     # test_zone_placement(1e-6)
     # test_taper(1e-6)
-    # test_multierror()
-    # test_zone_quantization()
-    test_zone_warping()
+    # # test_zone_quantization()
+    # test_zone_warping()
+    test_multierror()
     # test_reference()
     # test_FZP_error()
 

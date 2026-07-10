@@ -388,6 +388,7 @@ class ThinLens(Aperture):
     
         self.build_profile(**self.kwargs)        
         self._transmittance_initialized = False
+        self.mutated = True
         
     ## transmittance features
     def transmittance(self, wavelength):
