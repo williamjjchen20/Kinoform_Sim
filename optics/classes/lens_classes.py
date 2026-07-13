@@ -660,15 +660,12 @@ class LensErrors():
             errs = kinoform.add_error(LensErrors.zone_shift, err=err)
         else:
             errs = kinoform.add_error(LensErrors.zone_removal, err=err, m=0, extend=True, direction="in", remove_last=False, mutable=True)
-        # print(errs, kinoform.zones, kinoform.zone_locations, sep="\n")
-        # print(errs)
+
         assert errs is not None
 
 
         r_start = np.asarray(kinoform.zone_right) #np.array(kinoform.zone_locations[:-1])
         r_end = r_start + proportion*errs
-        # print(r_start, r_end, sep="\n")
-        # quit()
         
         if kinoform.dim == 1:
             r = np.abs(kinoform.grid)
