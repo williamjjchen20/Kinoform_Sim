@@ -48,20 +48,33 @@ def FWHM(wave: Waveform):
     r_half = x0 + (I_half - y0) * (x1 - x0) / (y1 - y0)
     return 2 * abs(r_half - x_peak)
 
-def intensity_stats(wave: Waveform):
+def max_intensity(wave: Waveform):
     '''
     args
     - wave: waveform object
     
     return
     - I_max: maximum intensity
-    - I_avg: average intensity
     '''
     I = wave.intensity()
     I_max = np.max(I)
-    I_avg = np.mean(I)
     
-    return I_max, I_avg
+    return I_max
+
+def mean_intensity(wave: Waveform):
+    '''
+    args
+    - wave: waveform object
+    
+    return
+    - I_max: maximum intensity
+    '''
+    
+    I = wave.intensity()
+    I_mean = np.mean(I)
+    
+    return I_mean
+    
 
 def total_power(wave: Waveform):
     I = wave.intensity()

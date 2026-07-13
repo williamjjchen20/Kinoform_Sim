@@ -67,7 +67,7 @@ def run_lens(lens_cls, simulation: SimulationObject, propagator: Propagator,
 def collect_metrics(P_in, focal_wave, lens, label):
     I = focal_wave.intensity()
     fwhm = FWHM(focal_wave)
-    I_max, I_avg = intensity_stats(focal_wave)
+    I_max, I_avg = max_intensity(focal_wave), mean_intensity(focal_wave)
     P_focal = focal_power(focal_wave, radius=1.22*focal_wave.wavelength*lens.f/(2*lens.R))
     eff = focal_efficiency(P_in, focal_wave, radius=1.22*focal_wave.wavelength*lens.f/(2*lens.R))
     return {

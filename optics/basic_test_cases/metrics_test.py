@@ -48,7 +48,7 @@ def run_lens(lens_cls, label, simulation, propagator, E, f, R, n, w0=None, init_
 def collect_metrics(focal_wave, incident_power, label):
     I = focal_wave.intensity()
     fwhm = FWHM(focal_wave)
-    I_max, I_avg = intensity_stats(focal_wave)
+    I_max, I_avg = max_intensity(focal_wave), mean_intensity(focal_wave)
     P_focal = total_power(focal_wave)
     eff = P_focal / incident_power if incident_power > 0 else np.nan
     return {
