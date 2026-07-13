@@ -400,7 +400,60 @@ class LensErrors():
         return profile, errors
     
     @staticmethod
-    def zone_shift(lens: Kinoform | FZP, err, verbose=False):
+    def kinoform_zone_placement(kinoform: Kinoform, err: float | np.ndarray, mutable=True) -> tuple[np.ndarray, np.ndarray | None]:
+        '''
+        Shift zone boundaries by a cumulative placement error of size `err` per
+        zone, rebuild the parabolic profile so each sample's thickness is
+        measured from its (shifted) zone's inner radius.
+        '''              
+        f = kinoform.f
+        delta = kinoform.delta
+        if kinoform.mutated: raise Exception("Kinoform profile has already been mutated!")
+        
+        ###
+        m_total = int(np.ceil(kinoform.zones))
+        # cumulative per-zone shift: eps[m] is applied to outer boundary r_m[m]
+        if isinstance(err, (int, float)): 
+            err = np.full(m_total, err)
+        else: 
+            assert (len(err) <= m_total)
+            err = np.asarray(err)
+        eps = np.cumsum(err)
+
+        assert np.all(eps[:-1] <= eps[1:]) 
+       
+        r_m = kinoform.zone_locations
+        r_in, r_out = r_m[:-1], r_m[1:]
+        
+        if kinoform.dim == 1:
+            r = np.abs(kinoform.grid)
+        else:
+            X, Y = kinoform.grid
+            r = np.sqrt(X**2 + Y**2)
+        
+        shifted_outer = r_out + eps # cumulative errors
+        zone_idx = np.clip(np.searchsorted(shifted_outer, r, side="right"), 0, m_total - 1)
+        h_in  = (np.sqrt(r_in[zone_idx]**2 + f**2) - f) / delta #advanced indexing
+        
+        ### New kinoform features
+        # if mutable:
+        #     print("Warning: Mutating original lens profile...")
+        #     R_new = kinoform.R + eps[-1]
+        #     kinoform.reshape(R=R_new)
+        #     kinoform.zone_locations = np.insert(shifted_outer, 0, 0.)
+        #     kinoform.zone_widths = Kinoform.calc_zone_widths(kinoform.zone_locations)
+        #     kinoform.mutated = True
+                  
+        r_effective = r - eps[zone_idx]
+        t_eff = (np.sqrt(r_effective**2 + f**2) - f) / delta
+        t = t_eff - h_in
+        t[t < 0] = 0
+        profile = t * (kinoform.aperture_field > 0)
+        
+        return profile, np.insert(err, 0, 0.)    
+    
+    @staticmethod
+    def zone_placement(lens: Kinoform | FZP, err, verbose=False):
         m_total = int(np.ceil(lens.zones))
         # cumulative per-zone shift: eps[m] is applied to outer boundary r_m[m]
         if isinstance(err, (int, float)): 
@@ -553,10 +606,42 @@ class LensErrors():
                     R_new = float(r_m_out[m_last])
                     if R_new < kinoform.R:
                         print("Warning: Shrinking aperture...")
+                        kinoform.reshape(r_m_in[:m_last+1], r_m_out[:m_last+1])
                         kinoform.zones = len(surviving)
-                kinoform.reshape(r_m_in[:m_last+1], r_m_out[:m_last+1]-errs[:m_last+1])
         
         profile = profile * (kinoform.aperture_field > 0)
+
+        return profile, None
+    
+    @staticmethod
+    def kinoform_sidewall_taper(kinoform: Kinoform, err: float | np.ndarray, proportion=1.) -> tuple[np.ndarray, np.ndarray | None]:
+        
+        errs = kinoform.add_error(LensErrors.zone_placement, err=err)
+        # print(errs, kinoform.zones, kinoform.zone_locations, sep="\n")
+        # print(errs)
+        assert errs is not None
+        
+        r_start = np.asarray(kinoform.zone_right) #np.array(kinoform.zone_locations[:-1])
+        r_end = r_start + proportion*errs
+        # print(r_start, r_end, sep="\n")
+        # quit()
+        
+        if kinoform.dim == 1:
+            r = np.abs(kinoform.grid)
+        else:
+            X, Y = kinoform.grid
+            r = np.sqrt(X**2 + Y**2)
+            
+        t_2pi = kinoform.height 
+        profile = kinoform.profile
+        
+        for r1, r2 in zip(r_start, r_end):
+            mask = (r <= r2) & (r >= r1)
+            r_mask = r[mask]
+            taper = -t_2pi/(r2-r1)*(r_mask-r2)
+            profile[mask] = taper
+            
+        kinoform.reshape(kinoform.zone_left, r_end)
 
         return profile, errs
     
@@ -570,7 +655,7 @@ class LensErrors():
         else:
             r_right, r_left = zone_locations[:-1:2], zone_locations[1:-1:2]
 
-        r_start, r_end = r_left - proportion*err, r_right + proportion*err
+        r_start, r_end = r_left - err, r_right + err
         
         if FZP.dim == 1:
             r = np.abs(FZP.grid)
@@ -647,57 +732,8 @@ class LensErrors():
         profile = profile * (lens.aperture_field > 0)
         return profile, None
     
-    @staticmethod 
-    def kinoform_zone_placement(kinoform: Kinoform, direction:str="in") -> tuple[np.ndarray, np.ndarray | None]:
-        profile = np.asarray(kinoform.profile)
-        
-        return profile, None
-    
     @staticmethod
-    def kinoform_sidewall_taper(kinoform: Kinoform, err: float | np.ndarray, proportion=1., zone_shift=False) -> tuple[np.ndarray, np.ndarray | None]:
-        
-        if zone_shift:
-            errs = kinoform.add_error(LensErrors.zone_shift, err=err)
-        else:
-            errs = kinoform.add_error(LensErrors.zone_removal, err=err, m=0, extend=True, direction="in", remove_last=False, mutable=True)
-        # print(errs, kinoform.zones, kinoform.zone_locations, sep="\n")
-        # print(errs)
-        assert errs is not None
-
-
-        r_start = np.asarray(kinoform.zone_right) #np.array(kinoform.zone_locations[:-1])
-        r_end = r_start + proportion*errs
-        # print(r_start, r_end, sep="\n")
-        # quit()
-        
-        if kinoform.dim == 1:
-            r = np.abs(kinoform.grid)
-        else:
-            X, Y = kinoform.grid
-            r = np.sqrt(X**2 + Y**2)
-            
-        height = kinoform.height 
-        profile = np.asarray(kinoform.profile)
-    
-        if np.count_nonzero(errs) != 0: 
-            for r1, r2 in zip(r_start, r_end):
-                
-                # ids = np.argsort(np.abs(r-r1)) # left and right from the symmetric zone boundaries
-                # heights = profile.ravel()[ids]
-                # sample = heights[heights > 0]
-                # height = sample[0]
-                
-                mask = (r <= r2) & (r >= r1)
-                r_mask = r[mask]
-                taper = -height/(r2-r1)*(r_mask-r2)
-                profile[mask] = taper
-
-            kinoform.reshape(kinoform.zone_left, r_end)
-
-        return profile, errs
-
-    @staticmethod
-    def kinoform_zone_warping(kinoform: Kinoform, R_min=None, R_max=None, beam_width=1e-8) -> tuple[np.ndarray, np.ndarray | None]:
+    def kinoform_zone_warping(kinoform: Kinoform, R_min=None, R_max=None, beam_width=1e-8):
         '''
         Warp thin outer zones toward an FZP-like rectangle by resampling them
         with only `ns = floor(zone_width / beam_width)` interior anchors, so

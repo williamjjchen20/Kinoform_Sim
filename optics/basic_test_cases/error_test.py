@@ -94,11 +94,8 @@ def test_zone_removal(err):
 
     print("Zones:", lens.zones)
     n = lens.zones
-    print(lens.zone_left, lens.zone_right, sep="\n")
     
-    lens.add_error(LensErrors.zone_removal, err=1e-7, m=0, direction="in", extend=True, remove_last=False, mutable=True)
-    
-    print(lens.zone_left, lens.zone_right, sep="\n")
+    lens.add_error(LensErrors.zone_removal, direction="in", extend=True, remove_last=True, mutable=True)
     
     fig, ax = plt.subplots(figsize=(8, 4))
     x = lens.grid
@@ -148,7 +145,7 @@ def test_gaussian_etch(max_err, invert=False):
     plt.close(fig)
     print(f"Saved etched kinoform profile to {out}.")
     
-def test_zone_shift(max_err):
+def test_zone_placement(max_err):
     print("Testing Kinoform with zone placement error (1D)...")
     Lx, Lz = 1.5e-4, 10000
     N = 10000
@@ -166,7 +163,7 @@ def test_zone_shift(max_err):
     
     print(lens.zone_left, lens.zone_right, sep="\n")
 
-    lens.add_error(LensErrors.zone_shift, err=1e-7)
+    lens.add_error(LensErrors.zone_placement, err=[1e-6, 1e-6, 1e-6], mutable=True)
     
     print(lens.zone_left, lens.zone_right, sep="\n")
     
@@ -203,9 +200,8 @@ def test_taper(max_err):
     
     print(lens.zone_right)
     
-    lens.add_error(LensErrors.kinoform_sidewall_taper, err=1e-6, proportion=1., zone_shift=False)
+    lens.add_error(LensErrors.kinoform_sidewall_taper, err=max_err, proportion=1.)
     # print(lens.R)
-    print(lens.zone_right)
     
     fig, ax = plt.subplots(figsize=(8, 4))
     x = lens.grid
@@ -327,7 +323,7 @@ def test_multierror():
 
     print("Kinoform Height:", lens.height)
     print(lens.zone_widths[-1])
-    lens.add_error(LensErrors.zone_shift, err=1e-7)
+    lens.add_error(LensErrors.zone_placement, err=1e-7)
     lens.add_error(LensErrors.kinoform_zone_warping, R_min=0, R_max=lens.R, beam_width=beam_width)
     lens.add_error(LensErrors.kinoform_sidewall_taper, err=1e-7,proportion=1.)
     lens.add_error(LensErrors.cap_floor, h=0.01, proportion=True)
@@ -441,13 +437,13 @@ if __name__ == "__main__":
     # test_gaussian_etch(max_err)
     # test_gaussian_etch(max_err, invert=True)
     # test_zone_removal(1e-6)
-    # test_zone_shift(1e-6)
-    test_taper(1e-6)
+    # test_zone_placement(1e-6)
+    # test_taper(1e-6)
     # test_zone_quantization()
     # test_zone_warping()
     # test_multierror()
     # test_reference()
-    # test_FZP_error()
+    test_FZP_error()
 
     
     

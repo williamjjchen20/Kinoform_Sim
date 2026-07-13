@@ -201,7 +201,7 @@ def main():
     
     ## Initialize reference parameters
         
-    E_range = np.array([0.999*E, E, 1.001*E])
+    E_range = np.array([0.9995*E, E, 1.0005*E])
     metrics=("P_eff", "FWHM", "Strehl")
 
     # Foreground the design-energy curve; push off-energy curves back
@@ -248,14 +248,14 @@ def main():
         case "y": 
             err_values = np.linspace(0, 2e-6, 12)
             labels = {
-                    "xlabel": [r"Maximum Roughness $[\mu m]$"] * len(metrics),
+                    "xlabel": [r"Maximum Etch Depth $[\mu m]$"] * len(metrics),
                     "ylabel": ["Focal Efficiency", r"FWHM $[nm]$", "Strehl Ratio"],
                     "xscale": ["linear"] * len(metrics),
                     "yscale": ["linear", "linear", "linear"],
                     "x_scale_factor":  1e6,                 # m -> um
                     "y_scale_factor": [1.0, 1e9, 1.0],     # FWHM m -> um
                     "label": [f"E={E_i/1000} keV" for E_i in E_range],
-                    "title": rf"Random Etch for (E={E/1000} keV, f={f} m, R={R*1e6} $\mu m$) Kinoform",
+                    "title": rf"Random Etch for (E={E/1000} keV, f={f} m, R={R*1e6} $[\mu m]$) Kinoform",
                     "marker": ["o", "^", "s", "d", "x"]
                 }
             out = savedir / "etch_error_vs_intensity_random.png"
@@ -269,14 +269,14 @@ def main():
         case "y": 
             err_values = -np.linspace(0, 2e-6, 12)
             labels = {
-                    "xlabel": [r"Roughness $[\mu m]$"] * len(metrics),
+                    "xlabel": [r"Etch Depth $[\mu m]$"] * len(metrics),
                     "ylabel": ["Focal Efficiency", r"FWHM $[nm]$", "Strehl Ratio"],
                     "xscale": ["linear"] * len(metrics),
                     "yscale": ["linear", "linear", "linear"],
                     "x_scale_factor":  -1e6,                 # m -> um
                     "y_scale_factor": [1.0, 1e9, 1.0],     # FWHM m -> um
                     "label": [f"E={E_i/1000} keV" for E_i in E_range],
-                    "title": rf"Periodic Etch for (E={E/1000} keV, f={f} m, R={R*1e6} $\mu m$) Kinoform",
+                    "title": rf"Periodic Etch for (E={E/1000} keV, f={f} m, R={R*1e6} $[\mu m]$) Kinoform",
                     "marker": ["o", "^", "s", "d", "x"]
                 }
             out = savedir / "etch_error_vs_intensity_periodic.png"
@@ -288,7 +288,7 @@ def main():
     ### Kinoform sidewall taper
     match input("Analyze kinoform sidewall taper? (y/n): "):
         case "y":
-            err_values = np.linspace(0, 1e-7, 10)
+            err_values = np.linspace(0, 1e-9, 10)
             p = 1.0
             labels = {
                     "xlabel": [r"Sidewall Taper Error $[nm]$"] * len(metrics),
@@ -298,7 +298,7 @@ def main():
                     "x_scale_factor":  1e9,                 # m -> um
                     "y_scale_factor": [1.0, 1e9, 1.0],
                     "label": [f"E={E_i/1000} keV" for E_i in E_range],
-                    "title": rf"Sidewall Taper (proportion={p}) for (E={E/1000} keV, f={f} m, R={R*1e6} $\mu m$) Kinoform",
+                    "title": rf"Sidewall Taper (proportion={p}) for (E={E/1000} keV, f={f} m, R={R*1e6} $[\mu m]$) Kinoform",
                     "marker": ["o", "^", "s", "d", "x"]
                 }
             out = savedir / "sidewall_taper_vs_intensity.png"
@@ -319,7 +319,7 @@ def main():
                     "x_scale_factor":  1.0,
                     "y_scale_factor": [1.0, 1e9, 1.0],
                     "label": [f"E={E_i/1000} keV" for E_i in E_range],
-                    "title": rf"Cap Height for (E={E/1000} keV, f={f} m, R={R*1e6} $\mu m$) Kinoform",
+                    "title": rf"Cap Height for (E={E/1000} keV, f={f} m, R={R*1e6} $[\mu m]$) Kinoform",
                     "marker": ["o", "^", "s", "d", "x"],
                 }
             out = savedir / "cap_height_vs_intensity.png"
@@ -340,7 +340,7 @@ def main():
                     "x_scale_factor":  1.0,
                     "y_scale_factor": [1.0, 1e9, 1.0],
                     "label": [f"E={E_i/1000} keV" for E_i in E_range],
-                    "title": rf"Cap Floor for (E={E/1000} keV, f={f} m, R={R*1e6} $\mu m$) Kinoform",
+                    "title": rf"Cap Floor for (E={E/1000} keV, f={f} m, R={R*1e6} $[\mu m]$) Kinoform",
                     "marker": ["o", "^", "s", "d", "x"],
                 }
             out = savedir / "cap_floor_vs_intensity.png"
@@ -361,7 +361,7 @@ def main():
                     "x_scale_factor":  1e9,
                     "y_scale_factor": [1.0, 1e9, 1.0],
                     "label": [f"E={E_i/1000} keV" for E_i in E_range],
-                    "title": rf"Zone Warping for (E={E/1000} keV, f={f} m, R={R*1e6} $\mu m$) Kinoform",
+                    "title": rf"Zone Warping for (E={E/1000} keV, f={f} m, R={R*1e6} $[\mu m]$) Kinoform",
                     "marker": ["o", "^", "s", "d", "x"],
                 }
             out = savedir / "zone_warping_vs_intensity.png"
