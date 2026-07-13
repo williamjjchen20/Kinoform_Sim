@@ -288,14 +288,14 @@ def main():
     ### Kinoform sidewall taper
     match input("Analyze kinoform sidewall taper? (y/n): "):
         case "y":
-            err_values = np.linspace(0, 5e-8, 10)
+            err_values = np.linspace(0, 1e-9, 10)
             p = 1.0
             labels = {
-                    "xlabel": [r"Sidewall Taper Error $[\mu m]$"] * len(metrics),
+                    "xlabel": [r"Sidewall Taper Error $[nm]$"] * len(metrics),
                     "ylabel": ["Focal Efficiency", r"FWHM $[nm]$", "Strehl Ratio"],
                     "xscale": ["linear"] * len(metrics),
                     "yscale": ["linear", "linear", "linear"],
-                    "x_scale_factor":  1e6,                 # m -> um
+                    "x_scale_factor":  1e9,                 # m -> um
                     "y_scale_factor": [1.0, 1e9, 1.0],
                     "label": [f"E={E_i/1000} keV" for E_i in E_range],
                     "title": rf"Sidewall Taper (proportion={p}) for (E={E/1000} keV, f={f} m, R={R*1e6} $[\mu m]$) Kinoform",
@@ -310,7 +310,7 @@ def main():
     ### Cap height (sweep by proportion of full kinoform height)
     match input("Analyze cap height? (y/n): "):
         case "y":
-            err_values = np.linspace(1.0, 0.1, 10)
+            err_values = np.linspace(1.0, 0.9, 10)
             labels = {
                     "xlabel": [r"Cap Height Proportion"] * len(metrics),
                     "ylabel": ["Focal Efficiency", r"FWHM $[nm]$", "Strehl Ratio"],
@@ -331,7 +331,7 @@ def main():
     ### Cap floor (sweep by proportion of full kinoform height)
     match input("Analyze cap floor? (y/n): "):
         case "y":
-            err_values = np.linspace(1e-3, 0.5, 10)
+            err_values = np.linspace(1e-3, 0.1, 10)
             labels = {
                     "xlabel": [r"Cap Floor Proportion"] * len(metrics),
                     "ylabel": ["Focal Efficiency", r"FWHM $[nm]$", "Strehl Ratio"],
