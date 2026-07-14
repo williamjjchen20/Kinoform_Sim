@@ -436,18 +436,15 @@ def test_FZP_error():
     
 if __name__ == "__main__":
     max_err = 5e-8
-    # test_kinoform_etch(max_err)
-    # test_kinoform_random_etch(max_err)
-    # test_gaussian_etch(max_err)
-    # test_gaussian_etch(max_err, invert=True)
-    # test_zone_removal(1e-6)
-    # test_zone_shift(1e-6)
+    test_kinoform_etch(max_err)
+    test_kinoform_random_etch(max_err)
+    test_gaussian_etch(max_err)
+    test_gaussian_etch(max_err, invert=True)
+    test_zone_removal(1e-6)
+    test_zone_shift(1e-6)
     test_taper(1e-6)
-    # test_zone_quantization()
-    # test_zone_warping()
-    # test_multierror()
-    # test_reference()
-    # test_FZP_error()
-
-    
-    
+    test_zone_quantization()
+    test_zone_warping()
+    test_multierror()
+    test_reference()
+    test_FZP_error()

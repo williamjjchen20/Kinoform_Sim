@@ -1,8 +1,13 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.constants as const
-import finufft as nufft
 
+import pyfftw
+import pyfftw.interfaces.scipy_fft as fft_lib
+import finufft as nufft
+from numba import njit
+
+pyfftw.interfaces.cache.enable()   # plan cache persists across calls
 from .classes import SimulationObject, Waveform, Propagator
 
 class AngularSpectrum(Propagator):
@@ -34,7 +39,6 @@ class ScaledAngularSpectrum(Propagator):
     def __init__(self, simulation, Rx=1., Ry=1.):
         super().__init__(scaled_angular_spectrum_method, simulation=simulation, Rx=Rx, Ry=Ry)
     
-
 def angular_spectrum_method(wave: Waveform, dz: float, n:float=1.) -> np.ndarray:
     '''
     Calculates the propagation of disturbance from initial wavefunction U(0) to U(z) in the specified dimensions. 
@@ -71,13 +75,13 @@ def angular_spectrum_method(wave: Waveform, dz: float, n:float=1.) -> np.ndarray
     U0 = np.fft.fftshift(U)
     # Calculate the intiial angular spectrum as a FT of the initial wavefunction
     if dim == 1:
-        fft = np.fft.fft
-        ifft = np.fft.ifft
+        fft = fft_lib.fft
+        ifft = fft_lib.ifft
     else: # dim = 2  
-        fft = np.fft.fft2
-        ifft = np.fft.ifft2
+        fft = fft_lib.fft2
+        ifft = fft_lib.ifft2
     
-    A0 = fft(U0)
+    A0 = fft(U0, workers=-1)
     K = 2*const.pi*n/wavelength
     if dim == 1:
         # nyquist ordering
@@ -111,7 +115,7 @@ def angular_spectrum_method(wave: Waveform, dz: float, n:float=1.) -> np.ndarray
     H[~band_mask] = 0 # aliasing removed 
     
     # Calculate the propagated waveform via an inverse FT and shift back to standard ordering
-    Uz = np.fft.ifftshift(ifft(A0 * H))
+    Uz = np.fft.ifftshift(ifft(A0 * H, workers=-1))
     return Uz
     
 def scaled_angular_spectrum_method(wave: Waveform, dz: float, n: float=1., Rx=1., Ry=1.) -> np.ndarray:

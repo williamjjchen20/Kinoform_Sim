@@ -1,0 +1,1 @@
+{"source": {"type": "Constant", "energy": 8000.0, "U0": 1.0}, "aperture": {}, "lens": {"type": "Kinoform", "f": 0.1, "R": 0.0001, "material": "Si", "density": 2.329, "zone_height": null, "full": true}}

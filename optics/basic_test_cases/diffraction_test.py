@@ -113,7 +113,7 @@ def test_slit_aperture_2D(width, height):
     im = ax[0, 0].imshow(wave.intensity(), norm=norm, cmap="Greys_r", extent=[-Lx/2, Lx/2, -Ly/2, Ly/2])
     ax[0, 0].set(title="Initial Beam (z=0 m)", xlim=(-width, width), ylim=(-height, height))
 
-    z = 0.7
+    z = 0.5
     aperture.transform(wave)
     wave.propagate(z, propagator)
 
@@ -285,7 +285,7 @@ def test_gaussian(width, height):
 
 if __name__ == "__main__":
     width, height = 0.5e-2, 0.5e-2
-    # test_slit_aperture_1D(width)
-    # test_slit_aperture_2D(width, height)
+    test_slit_aperture_1D(width)
+    test_slit_aperture_2D(width, height)
     test_circular_aperture_1D(width, height)
-    # test_gaussian(width, height)
+    test_gaussian(width, height)

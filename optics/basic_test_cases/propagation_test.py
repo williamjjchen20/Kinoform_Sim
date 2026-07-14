@@ -260,8 +260,8 @@ def test_zoom_2D():
     plt.show()
 
 if __name__ == "__main__":
-    # test_gaussian_1D(AngularSpectrum)
-    # test_gaussian_2D(AngularSpectrum)
-    # test_constant_1D(ScaledAngularSpectrum)
+    test_gaussian_1D(AngularSpectrum)
+    test_gaussian_2D(AngularSpectrum)
+    test_constant_1D(AngularSpectrum)
     test_zoom_1D()
     test_zoom_2D()
