@@ -225,10 +225,56 @@ def plot_sweep(err, vals, labels, savepath, refs=None, metrics=None):
     plt.close(fig)
     print(f"Saved sweep figure to {savepath}.")
 
+def _draw_sweep_column(ax_col, err, vals, labels, col_title=None,
+                       refs=None, metrics=None):
+    '''Draw one sweep (all metrics) into the provided column of axes.
+
+    Vertical transpose of `_draw_sweep_row`: metric j is drawn into ax_col[j].
+    Supports the same axis-limit controls documented on `_draw_sweep_row`.
+    '''
+    n_metrics = len(vals[0])
+    n_series  = len(vals)
+
+    xlabel  = labels.get("xlabel",  [""] * n_metrics)
+    ylabel  = labels.get("ylabel",  [""] * n_metrics)
+    xscale  = labels.get("xscale",  ["linear"] * n_metrics)
+    yscale  = labels.get("yscale",  ["linear"] * n_metrics)
+    x_scale_factor  = labels.get("x_scale_factor",  1.0)
+    y_scale_factor = labels.get("y_scale_factor", [1.0] * n_metrics)
+    xlim        = labels.get("xlim",        [None] * n_metrics)
+    ylim        = labels.get("ylim",        [None] * n_metrics)
+    ylim_spread = labels.get("ylim_spread", [None] * n_metrics)
+
+    label     = labels.get("label",     [""]     * n_series)
+    marker    = labels.get("marker",    ["o"]    * n_series)
+    color     = labels.get("color",     [None]   * n_series)
+    linestyle = labels.get("linestyle", ["-"]    * n_series)
+    alpha     = labels.get("alpha",     [1.0]    * n_series)
+    linewidth = labels.get("linewidth", [1.5]    * n_series)
+    zorder    = labels.get("zorder",    [2]      * n_series)
+
+    err_plot = np.asarray(err) * x_scale_factor
+
+    for i, val in enumerate(vals):
+        for j, metric in enumerate(val):
+            ax_col[j].plot(err_plot, np.asarray(metric) * y_scale_factor[j],
+                           color=color[i], marker=marker[i], label=label[i],
+                           linestyle=linestyle[i], alpha=alpha[i],
+                           linewidth=linewidth[i], zorder=zorder[i])
+            ax_col[j].set(xlabel=xlabel[j], ylabel=ylabel[j],
+                          xscale=xscale[j], yscale=yscale[j])
+
+    if any(lbl for lbl in label):
+        ax_col[0].legend()
+
+    if col_title:
+        ax_col[0].set_title(f"{col_title}\n{ax_col[0].get_title()}")
+
 def plot_sweeps_combined(sweeps, savepath, suptitle=""):
     '''
-    Stack multiple sweeps into a single figure: one row per sweep, columns
-    are metric fields.
+    Combine multiple sweeps into a single figure: one column per sweep, rows
+    are metric fields. x-axis is shared down each column (same error units)
+    and y-axis is shared across each row (same metric).
 
     `sweeps` is a list of dicts with keys: name, err, vals, labels, and optionally
     refs (list of {metric: value} per series) and metrics (metric-name tuple).
@@ -236,19 +282,20 @@ def plot_sweeps_combined(sweeps, savepath, suptitle=""):
     if not sweeps:
         print("No sweeps to combine; skipping combined figure.")
         return
-    n_rows = len(sweeps)
+    n_cols = len(sweeps)
     n_metrics = len(sweeps[0]["vals"][0])
 
-    fig, ax = plt.subplots(n_rows, n_metrics,
-                           figsize=(4.5*n_metrics, 4*n_rows),
+    fig, ax = plt.subplots(n_metrics, n_cols,
+                           figsize=(4.5*n_cols, 4*n_metrics),
+                           sharex="col", sharey="row",
                            constrained_layout=True, squeeze=False)
     if suptitle:
         fig.suptitle(suptitle)
 
-    for r, sw in enumerate(sweeps):
-        _draw_sweep_row(ax[r], sw["err"], sw["vals"], sw["labels"],
-                        row_title=sw["name"],
-                        refs=sw.get("refs"), metrics=sw.get("metrics"))
+    for c, sw in enumerate(sweeps):
+        _draw_sweep_column(ax[:, c], sw["err"], sw["vals"], sw["labels"],
+                           col_title=sw["name"],
+                           refs=sw.get("refs"), metrics=sw.get("metrics"))
 
     fig.savefig(savepath)
     plt.close(fig)
