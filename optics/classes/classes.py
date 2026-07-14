@@ -407,9 +407,9 @@ class ThinLens(Aperture):
         
     def transform(self, wave: Waveform):
         if not self._transmittance_initialized:
-            print("Warning: Treating lens as aperture...")
-            # self.init_transmittance(wave)
-            # self._transmittance_initialized = True
+            print("Warning: Transmittance was not initialized...")
+            self.init_transmittance(wave)
+            self._transmittance_initialized = True
 
         wave.field = wave.field.astype(np.complex128)*self.field
     
