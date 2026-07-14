@@ -2,6 +2,9 @@ import xraylib
 import numpy as np
 import scipy.constants as const
 import matplotlib.pyplot as plt
+from matplotlib import cm
+from matplotlib.colors import LightSource, Normalize
+from scipy.ndimage import map_coordinates
 import os
 
 from .classes import SimulationObject, ThinLens
@@ -38,7 +41,7 @@ class CircularLens(ThinLens):
         
         super().reshape(new_aperture_func)
         
-    def plot_profile(self, ax=None, savedir="", labels=None, R_min=None, R_max=None):
+    def plot_profile(self, ax=None, savedir="", labels=None, R_min=None, R_max=None, _3d=False):
         '''
         Plot the side profile (thickness vs. x) of the lens from
         `self.profile`. For 2D simulations, takes the central row.
@@ -68,35 +71,183 @@ class CircularLens(ThinLens):
         title  = labels.get("title", f"{label} profile (f={self.f:.3g} m, R={self.R:.3g} m)")
         xscale = labels.get("xscale", "linear")
         yscale = labels.get("yscale", "linear")
-
-        if self.simulation.dim == 1:
-            x = self.grid
-            t = self.profile
-        else:
-            X, _ = self.grid
-            x = X[0,:]
-            cy = self.profile.shape[0] // 2
-            t = self.profile[cy,:]
-
-        mask = np.abs(x) <= self.R
-        x_plot = x[mask] * x_scale_factor
-        t_plot = t[mask] * y_scale_factor
-        ax.fill_between(x_plot, 0, t_plot, color="steelblue", alpha=0.6)
-        ax.plot(x_plot, t_plot, color="navy", lw=1)
-        ax.set(xlabel=xlabel, ylabel=ylabel, title=title,
-               xscale=xscale, yscale=yscale)
-    
+        
         if R_min is None: R_min = -self.R
         if R_max is None: R_max = self.R
-        ax.set_xlim(R_min * x_scale_factor, R_max* x_scale_factor)
-        ax.axhline(0, color="black", lw=0.5)
         
+        if _3d:
+            assert self.simulation.dim == 2
+            ss = ax.get_subplotspec()
+            ax.remove()
+            ax3d = fig.add_subplot(ss, projection="3d")
+            ax3d.tick_params(axis="both", pad=2)
+
+            # 1. Build radial sample grid.
+            #    For PhaseWrappedLens (FZP / Kinoform), duplicate samples at each
+            #    zone boundary (r_m +/- eps) so zone walls render as near-vertical
+            #    facets in `plot_surface`.
+            n_r_base = self.simulation.Nx//4#int(labels.get("n_r", 512)) # type: ignore
+            n_theta  = self.simulation.Nx//4#int(labels.get("n_theta", 256)) # type: ignore
+            r_base = np.linspace(0.0, self.R, n_r_base)
+
+            zone_locs = getattr(self, "zone_locations", None)
+            if zone_locs is not None and len(zone_locs) > 1:
+                zl = np.asarray(zone_locs)
+                zl = zl[(zl > 0.0) & (zl < self.R)]
+                eps = max(self.R * 1e-6, 1e-12)
+                r = np.unique(np.concatenate([r_base, zl - eps, zl + eps]))
+            else:
+                r = r_base
+            th = np.linspace(0.0, 2*np.pi, n_theta)
+
+            R_, T_ = np.meshgrid(r, th)
+            Xp = R_ * np.cos(T_)
+            Yp = R_ * np.sin(T_)
+
+            # 2. Evaluate the thickness on the polar grid.
+            #    Prefer the analytic thickness (clean, grid-independent). Fall back
+            #    to interpolating the Cartesian profile when the lens has been
+            #    perturbed by an azimuthally varying error (or thickness fails).
+            use_analytic = True
+            analytic_err = None
+            try:
+                Zp = self.thickness(Xp, Yp)
+                Zp = np.asarray(Zp, dtype=float)
+                if Zp.shape != Xp.shape:
+                    use_analytic = False
+            except Exception as e:
+                use_analytic = False
+                analytic_err = e
+
+            if not use_analytic:
+                from scipy.ndimage import map_coordinates
+                sim = self.simulation
+                # map Cartesian (Xp, Yp) [m] -> fractional pixel coords of self.profile
+                col = (Xp / sim.dx) + (sim.Nx / 2.0)
+                row = (Yp / sim.dy) + (sim.Ny / 2.0)  # type: ignore
+                Zp = map_coordinates(np.asarray(self.profile, dtype=float),
+                                     [row, col], order=1, mode="constant", cval=0.0)
+
+            # Clamp tiny negatives from interpolation / round-off so the bottom
+            # cap and skirt sit cleanly at z=0.
+            Zp = np.where(np.isfinite(Zp), Zp, 0.0)
+            Zp = np.maximum(Zp, 0.0)
+
+            # Debug: confirm the top surface actually has nonzero thickness.
+            print(f"[plot_profile 3d] {type(self).__name__}: "
+                  f"analytic={use_analytic}, Zp min/max = {Zp.min():.3e} / {Zp.max():.3e}, "
+                  f"nonzero fraction = {(Zp > 0).mean():.3f}"
+                  + (f", analytic_err={analytic_err!r}" if analytic_err else ""))
+
+            # 3. Apply plot scale factors.
+            assert isinstance(x_scale_factor, float) and isinstance(y_scale_factor, float)
+            Xs_ = Xp * x_scale_factor
+            Ys_ = Yp * x_scale_factor
+            Zs_ = Zp * y_scale_factor
+
+            # 4. Color the top surface by height with soft shading for depth cues.
+            cmap = plt.get_cmap(labels.get("cmap", "viridis"))
+            zmin = float(Zs_.min())
+            zmax = float(Zs_.max()) if Zs_.max() > zmin else zmin + 1.0
+            norm = Normalize(vmin=zmin, vmax=zmax)
+            ls = LightSource(azdeg=315, altdeg=45)
+            rgb = ls.shade(Zs_, cmap=cmap, norm=norm,
+                           blend_mode="soft", vert_exag=1.0)
+
+            # 5. Watertight fill (Option 1). Draw order matters: matplotlib's 3D
+            #    painter algorithm draws later surfaces over earlier ones in
+            #    ambiguous overlap, and equal-z facets z-fight. So we:
+            #      (a) cap first, offset just below z=0 to break z-fighting with
+            #          zero-thickness zone floors / rim.
+            #      (b) skirt next (a thin cylinder at r=R).
+            #      (c) top surface last so it paints over the cap in projection.
+            #    All three are colored by the top-surface thickness above each
+            #    (x, y) point so cap and skirt visually match the top.
+            z_eps = max(1e-4 * (zmax if zmax > 0 else 1.0), np.finfo(float).eps)
+
+            # (a) bottom cap, drawn first, offset just below z=0.
+            ax3d.plot_surface(Xs_, Ys_, np.full_like(Zs_, -z_eps),
+                              facecolors=rgb, rstride=1, cstride=1, linewidth=0,
+                              antialiased=False, shade=False)
+
+            # (b) outer skirt: two-row surface from z=0 up to the rim profile.
+            #     LightSource.shade_rgb needs >=3 samples per axis (np.gradient),
+            #     so the skirt is left un-shaded; its height-mapped colors still
+            #     read cleanly against the shaded top.
+            rim_z = Zs_[:, -1]                                  # (n_theta,)
+            rim_x = self.R * np.cos(th) * x_scale_factor
+            rim_y = self.R * np.sin(th) * x_scale_factor
+            Xk = np.vstack([rim_x, rim_x])
+            Yk = np.vstack([rim_y, rim_y])
+            Zk = np.vstack([np.full_like(rim_z, -z_eps), rim_z])
+            rim_rgb = cmap(norm(rim_z))                          # (n_theta, 4)
+            skirt_face = rim_rgb[np.newaxis, :-1, :]             # (1, n_theta-1, 4)
+            ax3d.plot_surface(Xk, Yk, Zk, facecolors=skirt_face,
+                              rstride=1, cstride=1, linewidth=0,
+                              antialiased=False, shade=False)
+
+            # (c) top surface, drawn last so it wins painter's-algorithm ties
+            #     against the cap in overlapping projections.
+            ax3d.plot_surface(Xs_, Ys_, Zs_, facecolors=rgb,
+                              rstride=1, cstride=1, linewidth=0,
+                              antialiased=False, shade=False)
+
+            # 6. Colorbar keyed to the top surface heights.
+            sm = cm.ScalarMappable(norm=norm, cmap=cmap)
+            sm.set_array([])
+            cbar = fig.colorbar(sm, ax=ax3d, shrink=0.6, pad=0.12)
+            cbar.set_label(ylabel) #type: ignore
+
+            # # 7. Aspect / view / labels. Z-axis is hidden (kept for framing only).
+            ax3d.set_xlim3d(R_min * x_scale_factor, R_max * x_scale_factor)
+            ax3d.set_ylim3d(R_min * x_scale_factor, R_max * x_scale_factor)
+            ax3d.set_zlim3d(0.0, 3*zmax if zmax > 0 else 1.0)
+            ax3d.set_box_aspect((1, 1, labels.get("z_aspect", 0.5)))
+            ax3d.view_init(elev=labels.get("elev", 45), azim=labels.get("azim", -60))
+
+            assert xlabel is not None
+            y_axis_label = xlabel.replace("x", "y")#labels.get("y_axis_label", xlabel.replace("x", "y") if "x" in xlabel else xlabel)
+            ax3d.set(xlabel=xlabel, ylabel=y_axis_label, title=title)
+            
+            # hide z axis: ticks, tick labels, axis label, spine line, and pane
+            # ax3d.set_zticks([]) #type: ignore
+            ax3d.set_zticklabels([]) # type: ignore
+            ax3d.set_zlabel("")
+            ax3d.zaxis.line.set_lw(0.0) # type: ignore
+            ax3d.zaxis.set_tick_params(length=0)
+            ax3d.zaxis.pane.set_visible(False)
+            ax_used = ax3d
+            
+        else:
+            if self.simulation.dim == 1:
+                x = self.grid
+                t = self.profile
+            else:
+                X, _ = self.grid
+                x = X[0,:]
+                cy = self.profile.shape[0] // 2
+                t = self.profile[cy,:]
+
+            mask = np.abs(x) <= self.R
+            x_plot = x[mask] * x_scale_factor
+            t_plot = t[mask] * y_scale_factor
+            ax.fill_between(x_plot, 0, t_plot, color="steelblue", alpha=0.6)
+            ax.plot(x_plot, t_plot, color="navy", lw=1)
+            ax.set(xlabel=xlabel, ylabel=ylabel, title=title,
+                xscale=xscale, yscale=yscale)
+        
+            ax.set_xlim(R_min * x_scale_factor, R_max* x_scale_factor)
+            ax.axhline(0, color="black", lw=0.5)
+        
+            ax_used = ax
+            
         if savedir:
             if label is None: label = type(self).__name__
             out = os.path.join(savedir, f"{label}_profile_z={self.center[-1]}.png")
             fig.savefig(out)
             print(f"Saved lens profile to {out}.")
-        return ax
+            
+        return ax_used
     
 class OpticalLens(CircularLens):
     def __init__(self, R, n, t0, R1, R2, simulation: SimulationObject, z, **kwargs):

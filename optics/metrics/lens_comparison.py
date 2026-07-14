@@ -189,7 +189,7 @@ def plot_comparison_2D(results, savepath, extend=False):
         wave_labels["ylim"] = None
         wave_ax = wave.view(ax=ax[i, 2],
                             labels=wave_labels,
-                            extend=extend, show_cbar=True)
+                            _3d=extend, show_cbar=True)
         wave_ax.set(title=f"{name} Focal Intensity")
 
         ## Wave intensity slice plot

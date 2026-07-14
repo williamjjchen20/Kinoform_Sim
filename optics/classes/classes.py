@@ -117,7 +117,7 @@ class Object():
     def add_error(self, error_func):
         self.error = error_func 
     
-    def view(self, ax=None, savedir="", labels: dict | None = None, show_cbar=False, extend=False, **kwargs):
+    def view(self, ax=None, savedir="", labels: dict | None = None, show_cbar=False, _3d=False, **kwargs):
         
         labels = dict(labels or {})
         cmap = labels.get("cmap", "Greys_r")
@@ -218,7 +218,7 @@ class Object():
             extent = [raw_extent[0]*x_scale_factor, raw_extent[1]*x_scale_factor,
                       raw_extent[2]*y_scale_factor, raw_extent[3]*y_scale_factor]
 
-            if not extend:
+            if not _3d:
                 # if we have a precomputed RGB (domain coloring), display it directly
                 im = ax.imshow(rgb if rgb is not None else data,
                                norm=None if rgb is not None else norm,
