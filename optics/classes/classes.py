@@ -60,8 +60,20 @@ class SimulationObject:
             case _:
                 raise Exception("Unknown Object")
         
-    def copy(self):
-        return SimulationObject(Lx=self.Lx, Nx=self.Nx, Lz=self.Lz, Ly=self.Ly, Ny=self.Ny, n=self.n)
+    def copy(self, dim=None):
+        if dim is None: dim = self.dim
+        
+        # 2D -> 3D
+        if dim == 2 and self.dim == 1:
+            sim = SimulationObject(Lx=self.Lx, Nx=np.sqrt(self.Nx), Lz=self.Lz, Ly=self.Lx, Ny=np.sqrt(self.Nx), n=self.n)
+        # 3D -> 2D
+        elif dim == 1 and self.dim == 2:
+            sim = SimulationObject(Lx=self.Lx, Nx=(self.Nx)**2//2, Lz=self.Lz, Ly=None, Ny=None, n=self.n) 
+        # xD -> xD   
+        else:
+            sim = SimulationObject(Lx=self.Lx, Nx=self.Nx, Lz=self.Lz, Ly=self.Ly, Ny=self.Ny, n=self.n)
+            
+        return sim
     
     def view(self):
         pass
@@ -300,8 +312,8 @@ class Waveform(Object):
     def __repr__(self):
         return f"{self.simulation.dim}-D Waveform with energy {self.energy:.3e} eV at {self.center}"
     
-    def copy(self):
-        return Waveform(self.energy, self.simulation.copy(), z=self.z)
+    def copy(self, dim=None):
+        return Waveform(self.energy, self.simulation.copy(dim=None), z=self.z)
         
     def propagate(self, dz, propagator: Propagator):
         if dz+self.z > self.simulation.Lz: 
@@ -337,6 +349,9 @@ class Aperture(Object):
         
     def __repr__(self):
         return f"Thin aperture located at {self.center}"
+    
+    def copy(self, dim=None):
+        return Aperture(self.simulation.copy(dim=dim), z=self.z, func=self.func, **self.kwargs)
         
     def transform(self, wave: Waveform):
         wave.field *= self.field
