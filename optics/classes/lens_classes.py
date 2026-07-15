@@ -16,12 +16,12 @@ class CircularLens(ThinLens):
         self.R_orig = R
         
         F = ApertureFunctions()
-        if simulation.dim == 2:
-            assert R <= simulation.Lx/2 and R <= simulation.Ly/2 #type: ignore
-            aperture_func = lambda X, Y, r=R, **kw: F.circular_mask(X, Y, r=r)
-        else:
+        if simulation.dim == 1:
             assert R <= simulation.Lx/2
             aperture_func = lambda X, r=R, **kw: F.single_slit_1D(X, r=r)
+        else:
+            assert R <= simulation.Lx/2 and R <= simulation.Ly/2 #type: ignore
+            aperture_func = lambda X, Y, r=R, **kw: F.circular_mask(X, Y, r=r)
         super().__init__(f, aperture_func, simulation, z, thickness_func=None, n=n, **kwargs)
         
     def reset(self):
@@ -231,10 +231,11 @@ class CircularLens(ThinLens):
             mask = np.abs(x) <= self.R
             x_plot = x[mask] * x_scale_factor
             t_plot = t[mask] * y_scale_factor
+
             ax.fill_between(x_plot, 0, t_plot, color="steelblue", alpha=0.6)
             ax.plot(x_plot, t_plot, color="navy", lw=1)
             ax.set(xlabel=xlabel, ylabel=ylabel, title=title,
-                xscale=xscale, yscale=yscale)
+                xscale=xscale, yscale=yscale, ylim=(0, 2*t.max()*y_scale_factor))
         
             ax.set_xlim(R_min * x_scale_factor, R_max* x_scale_factor)
             ax.axhline(0, color="black", lw=0.5)
@@ -275,6 +276,9 @@ class XrayParabolicLens(CircularLens):
         self.delta = (1.-n).real
         super().__init__(f, R, n, simulation, z,**kwargs)
         
+    def copy(self, dim=None):
+        return XrayParabolicLens(self.f, self.R_orig, self.n, self.simulation.copy(dim=dim), self.z, **self.kwargs)
+        
     def thickness(self, *args, **kwargs):
         X = args[0]
         r_squared = X**2
@@ -306,14 +310,20 @@ class PhaseWrappedLens(CircularLens):
     def mth_zone(self, m):
         self.zone_locations: np.ndarray
         return self.zone_locations[m]
-
+    
     @staticmethod
-    def calc_zone_widths(zone_locations):
-        assert len(zone_locations) > 1
-        return zone_locations[1:] - zone_locations[:-1]
+    def calc_zone_locations(wavelength, f, m):
+        zone_locations = np.sqrt(2*m*f*wavelength + (m*wavelength)**2)
+        return zone_locations
+    
+    @staticmethod
+    def calc_zone_widths(zone_left, zone_right):
+        assert (len(zone_left) == len(zone_right)) & (np.all(zone_left <= zone_right))
+        zone_widths = zone_right - zone_left
+        return zone_widths
 
 class FZP(PhaseWrappedLens):
-    def __init__(self, wavelength, f, R, n, simulation: SimulationObject, z, zone_height: float | None = None, p=2, positive=True, **kwargs):
+    def __init__(self, wavelength, f, R, n, simulation: SimulationObject, z, full=True, zone_height: float | None = None, p=2, positive=True, **kwargs):
         self.wavelength = wavelength
         self.delta = (1.-n).real
         self.height = zone_height if zone_height is not None else wavelength/(p*self.delta)
@@ -321,13 +331,23 @@ class FZP(PhaseWrappedLens):
         self.positive = positive
         
         self.zones = (np.sqrt(f**2+R**2)-f)/(self.wavelength/p)
-        zone_locations = FZP.calc_zone_locations(self.wavelength/p, f, R, np.arange(int(np.ceil(self.zones))+1))
+        # zone_locations = super().calc_zone_locations(self.wavelength/p, f, np.arange(int(np.ceil(self.zones))+1))
+        self.full_zones = full
+        if full: self.zones = int(np.ceil(self.zones))
+    
+        zone_locations = super().calc_zone_locations(self.wavelength/p, f, np.arange(self.zones+1))
+        if not full: zone_locations = np.clip(zone_locations, 0, R)
+        
         self.zone_locations = zone_locations
         self.zone_left = zone_locations[:-1]
         self.zone_right = zone_locations[1:]
-        self.zone_widths = FZP.calc_zone_widths(self.zone_left, self.zone_right)
-        super().__init__(f, R, n, simulation, z,**kwargs)
+        self.zone_widths = super().calc_zone_widths(self.zone_left, self.zone_right)
+        super().__init__(f, zone_locations[-1], n, simulation, z,**kwargs)
         self.mutated = False
+        
+    def copy(self, dim=None):
+        return FZP(self.wavelength, self.f, self.R_orig, self.n, self.simulation.copy(dim=dim), self.z, 
+                        full=self.full_zones, zone_height=self.height, **self.kwargs)
         
     def thickness(self, *args, **kwargs):
         X = args[0]
@@ -338,7 +358,7 @@ class FZP(PhaseWrappedLens):
             
         t_fzp = np.full(r_squared.shape, self.height)
         # indices start at 1 (between 0 and r1)
-        r_z = np.clip(np.searchsorted(self.zone_locations, np.sqrt(r_squared), side="right")-1, 0, len(self.zone_locations)-1)
+        r_z = np.clip(np.searchsorted(self.zone_locations, np.sqrt(r_squared), side="right")-1, 0, len(self.zone_locations))
 
         if self.positive:
             t_fzp[r_z % 2 == 0] = 0
@@ -359,18 +379,6 @@ class FZP(PhaseWrappedLens):
         R_new = zone_right[-1]
         super().reshape(R=R_new)
         self.mutated = True
-
-    @staticmethod
-    def calc_zone_locations(wavelength, f, R, m):
-        zone_locations = np.sqrt(2*m*f*wavelength + (m*wavelength)**2)
-        zone_locations = np.clip(zone_locations, 0, R)
-        return zone_locations
-    
-    @staticmethod
-    def calc_zone_widths(zone_left, zone_right):
-        assert (len(zone_left) == len(zone_right)) & (np.all(zone_left <= zone_right))
-        zone_widths = zone_right - zone_left
-        return zone_widths
         
 class Kinoform(PhaseWrappedLens):
     def __init__(self, wavelength, f, R, n, simulation: SimulationObject, z, full=True, zone_height: float | None = None, **kwargs):
@@ -380,18 +388,23 @@ class Kinoform(PhaseWrappedLens):
         self.effective_wavelength = wavelength if zone_height is None else self.delta*self.height
         
         self.zones = (np.sqrt(f**2+R**2)-f)/self.effective_wavelength
+        self.full_zones = full
         if full: self.zones = int(np.ceil(self.zones))
-        zone_locations = Kinoform.calc_zone_locations(self.effective_wavelength, f, np.arange(self.zones+1))
+        zone_locations = super().calc_zone_locations(self.effective_wavelength, f, np.arange(self.zones+1))
         if not full: zone_locations = np.clip(zone_locations, 0, R)
         
         self.zone_locations = zone_locations
         self.zone_left = zone_locations[:-1]
         self.zone_right = zone_locations[1:]
-        self.zone_widths = Kinoform.calc_zone_widths(self.zone_left, self.zone_right)
+        self.zone_widths = super().calc_zone_widths(self.zone_left, self.zone_right)
         super().__init__(f, zone_locations[-1], n, simulation, z,**kwargs)
         
         self.R = zone_locations[-1]
         self.mutated = False
+        
+    def copy(self, dim=None):
+        return Kinoform(self.wavelength, self.f, self.R_orig, self.n, self.simulation.copy(dim=dim), self.z, 
+                        full=self.full_zones, zone_height=self.height, **self.kwargs)
         
     def thickness(self, *args, **kwargs):
         ## Note: Bandwidth limited by requiring wavelength for a specific energy of x-ray
@@ -419,17 +432,6 @@ class Kinoform(PhaseWrappedLens):
         if R is None: R = R_new
         super().reshape(R=R)
         self.mutated = True
-        
-    @staticmethod
-    def calc_zone_locations(wavelength, f, m,  R=np.inf):
-        zone_locations = np.sqrt(2*m*f*wavelength + (m*wavelength)**2)
-        return zone_locations
-    
-    @staticmethod
-    def calc_zone_widths(zone_left, zone_right):
-        assert (len(zone_left) == len(zone_right)) & (np.all(zone_left <= zone_right))
-        zone_widths = zone_right - zone_left
-        return zone_widths
     
 class CompoundLens(ThinLens):
     pass
