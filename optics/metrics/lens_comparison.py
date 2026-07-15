@@ -20,6 +20,8 @@ parser.add_argument("--dim", type=int, choices=[1, 2], default=2,
                     help="simulation dimensionality (1 or 2)")
 parser.add_argument("--extend", action="store_true", default=False,
                     help="render 2D focal/lens views as 3D surfaces")
+parser.add_argument("--mark-fwhm", action="store_true", default=True,
+                    help="mark FWHM on the central-cut slice plots")
 
 def run_lens(lens_cls, simulation: SimulationObject, propagator: Propagator, 
              E: float, f: float, R: float, n: float | complex, 
@@ -94,7 +96,7 @@ def print_comparison(metrics_list: list[dict]):
         print(row)
     print("=" * len(header))
 
-def plot_comparison_1D(results, savepath):
+def plot_comparison_1D(results, savepath, mark_fwhm=False):
     '''
     Plot lens profile, lens phase, focal-plane intensity, and a zoomed
     central cut for an arbitrary set of lenses.
@@ -106,12 +108,14 @@ def plot_comparison_1D(results, savepath):
     n_lenses = len(results)
     if n_lenses == 0: raise Exception("No lenses added.")
 
+    figw, figh_per_row = 10, 3.0
     fig, ax = plt.subplots(
         nrows=n_lenses, ncols=3,
-        figsize=(12, 3.0 * n_lenses),
+        figsize=(figw, figh_per_row * n_lenses),
         squeeze=False,
         constrained_layout=True,
     )
+    title_fs = max(6, min(figw, figh_per_row) * 1.2)
 
     cmap_cycle = plt.get_cmap("tab10")
 
@@ -124,14 +128,16 @@ def plot_comparison_1D(results, savepath):
             R_min = -lens.R
             
         lens.plot_profile(ax=ax[i, 0], labels=labels, R_min = R_min)
+        ax[i, 0].title.set_fontsize(title_fs)
 
         ## Lens phase plot
         lens_labels = dict(labels)
-        lens_labels["xlim"] = (-lens.R/3, lens.R/3)
+        lens_labels["xlim"] = (-lens.R/4, lens.R/4)
         lens_labels["ylim"] = None
         lens_labels["y_scale_factor"] = 1.
         lens_ax = lens.view(ax=ax[i, 1], labels=lens_labels, color=cmap_cycle(i%10))
         lens_ax.set(title=f"{name} Lens Phase")
+        lens_ax.title.set_fontsize(title_fs)
 
         ## Wave intensity full view
         wave_labels = dict(labels)
@@ -139,11 +145,22 @@ def plot_comparison_1D(results, savepath):
         wave_labels["y_scale_factor"] = 1.
         wave_ax = wave.view(ax=ax[i, 2], labels=wave_labels, color=cmap_cycle(i%10))
         wave_ax.set(title=f"{name} Focal Intensity")
+        wave_ax.title.set_fontsize(title_fs)
+
+        if mark_fwhm:
+            fwhm = labels.get("fwhm")
+            x_scale_factor = labels.get("x_scale_factor", 1.0)
+            if fwhm is not None:
+                ax[i, 2].axhline(0.5, color="gray", lw=0.8, ls="--")
+                ax[i, 2].axvspan(-fwhm/2 * x_scale_factor, fwhm/2 * x_scale_factor,
+                                 color="crimson", alpha=0.15,
+                                 label=f"FWHM={fwhm:.2e} m")
+                ax[i, 2].legend(fontsize=8)
 
     fig.savefig(savepath)
     plt.close(fig)
 
-def plot_comparison_2D(results, savepath, extend=False):
+def plot_comparison_2D(results, savepath, extend=False, mark_fwhm=False):
     '''
     Plot lens phase, focal-plane intensity (log), and central line cut for an
     arbitrary set of lenses.
@@ -154,12 +171,14 @@ def plot_comparison_2D(results, savepath, extend=False):
     n_lenses = len(results)
     if n_lenses == 0: raise Exception("No lenses added.")
 
+    figw, figh_per_row = 24, 5.0
     fig, ax = plt.subplots(
         nrows=n_lenses, ncols=4,
-        figsize=(24, 5.0 * n_lenses),
+        figsize=(figw, figh_per_row * n_lenses),
         squeeze=False,
         constrained_layout=True,
     )
+    title_fs = max(6, min(figw / 4, figh_per_row) * 1.2)
 
     cmap_cycle = plt.get_cmap("tab10")
 
@@ -172,6 +191,7 @@ def plot_comparison_2D(results, savepath, extend=False):
             R_min = -lens.R
             
         lens.plot_profile(ax=ax[i, 0], labels=labels, R_min=R_min)
+        ax[i, 0].title.set_fontsize(title_fs)
         
         ## Lens phase plot
         lens_labels = dict(labels)
@@ -181,6 +201,7 @@ def plot_comparison_2D(results, savepath, extend=False):
     
         lens_ax = lens.view(ax=ax[i, 1], labels=lens_labels, show_cbar=True)
         lens_ax.set(title=f"{name} Lens Phase")
+        lens_ax.title.set_fontsize(title_fs)
 
         ## Wave intensity/phase plot: zoom around focal spot
         # focal_extent = [-lens.R/2, lens.R/2, -lens.R/2, lens.R/2]
@@ -191,6 +212,7 @@ def plot_comparison_2D(results, savepath, extend=False):
                             labels=wave_labels,
                             _3d=extend, show_cbar=True)
         wave_ax.set(title=f"{name} Focal Intensity")
+        wave_ax.title.set_fontsize(title_fs)
 
         ## Wave intensity slice plot
         x_scale_factor = labels.get("x_scale_factor", 1.0)
@@ -206,11 +228,21 @@ def plot_comparison_2D(results, savepath, extend=False):
         ax[i, 3].plot(x*x_scale_factor, I[cy, :], color=cmap_cycle(i % 10))
         # ax[i, 3].set(xlim=(-lens.R/2*x_scale_factor, lens.R/2*x_scale_factor))
         ax[i, 3].set(title=f"{name} Central Cut", xlabel=xlabel, ylim=ylim, ylabel="Intensity", yscale=yscale)
+        ax[i, 3].title.set_fontsize(title_fs)
+
+        if mark_fwhm:
+            fwhm = labels.get("fwhm")
+            if fwhm is not None:
+                ax[i, 3].axhline(0.5 * I[cy, :].max(), color="gray", lw=0.8, ls="--")
+                ax[i, 3].axvspan(-fwhm/2 * x_scale_factor, fwhm/2 * x_scale_factor,
+                                 color="crimson", alpha=0.15,
+                                 label=f"FWHM={fwhm:.2e} m")
+                ax[i, 3].legend(fontsize=8)
 
     fig.savefig(savepath)
     plt.close(fig)
 
-def test_compare_xray_lenses(lens_dict, N, dim, extend=False):
+def test_compare_xray_lenses(lens_dict, N, dim, extend=False, mark_fwhm=False):
     print("Comparing Lenses...")
     
     # Parameters
@@ -278,7 +310,8 @@ def test_compare_xray_lenses(lens_dict, N, dim, extend=False):
             "yscale": "linear",
             "y_scale_factor": 1e6,
             "zones": display_zones,
-            "title": rf"{name} profile (f={lens.f:.3g} m, R={lens.R *1e6:.3g} $\mu m$)"
+            "title": rf"{name} profile (E={E/1000} keV, f={lens.f:.3g} m, R={lens.R *1e6:.3g} $\mu m$)",
+            "fwhm": m.get("fwhm"),
         }
         
         results[name] = (source, lens, plot_labels)
@@ -287,11 +320,11 @@ def test_compare_xray_lenses(lens_dict, N, dim, extend=False):
 
     if dim == 1:
         out = os.path.join(savedir, "Metrics_Lens_Comparison_1D.png")
-        plot_comparison_1D(results, out)
+        plot_comparison_1D(results, out, mark_fwhm=mark_fwhm)
     else:
         suffix = "3D" if extend else "2D"
         out = os.path.join(savedir, f"Metrics_Lens_Comparison_{suffix}.png")
-        plot_comparison_2D(results, out, extend=extend)
+        plot_comparison_2D(results, out, extend=extend, mark_fwhm=mark_fwhm)
 
     print(f"Saved comparison figure to {out}")
 
@@ -428,7 +461,7 @@ def main():
     args = parser.parse_args()
     lenses = take_user_input()
     print(lenses)
-    test_compare_xray_lenses(lenses, args.N, args.dim, extend=args.extend)
+    test_compare_xray_lenses(lenses, args.N, args.dim, extend=args.extend, mark_fwhm=args.mark_fwhm)
 
 if __name__ == "__main__":
     main()
