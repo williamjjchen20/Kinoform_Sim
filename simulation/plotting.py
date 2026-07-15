@@ -52,51 +52,52 @@ def simulation_sideview(simulation: SimulationObject, z_max, dz):
     print("Simulation Complete.")
     return view
 
-def plot_3D_Lens(lens):
-    pass
+def plot_full_lens_profile(lens):
+    print("Plotting full lens profile...")
 
-# def test_focal_intensity_consistency():
-#     """
-#     Sanity check: peak intensity from plot_sideview at the focal column should
-#     match a direct one-shot propagation over the same total distance.
+    x_sf = 1e6          # m -> µm on lateral axes
+    z_sf = 1e6          # m -> nm on thickness axis
 
-#     Setup: source at z=0, lens at z=z_lens, focal spot at z = z_lens + f.
-#     Direct path: propagate to lens -> transform -> propagate f to focal plane.
-#     Sideview path: extract the column nearest z = z_lens + f from view.
-#     """
-#     print("\n=== test_focal_intensity_consistency ===")
-#     Lx, Lz, N = 1.5e-4, 1.5, 2048
-#     E, f, R = 8.0e3, 1.0, 5e-5
-#     z_lens = 0.0
-#     n = xrl.Refractive_Index("Si", E / 1000, 2.329)
+    labels = {
+        "label":          type(lens).__name__,
+        "xlabel":         r"x [$\mu$m]",
+        "y_axis_label":   r"y [$\mu$m]",
+        "x_scale_factor": x_sf,
+        "y_scale_factor": z_sf,
+        "ylabel": None,
+        "title": None,
+        "cmap":           "viridis",
+        "elev":           30,
+        "azim":           -55,
+        "z_aspect":       0.5,
+    }
 
-#     dz = 0.01
+    fig = plt.figure(figsize=(10, 3), layout="constrained")
+    gs  = fig.add_gridspec(1, 2, width_ratios=[1, 0.8])
+
+    ax3d_placeholder = fig.add_subplot(gs[0, 0])
+    ax2d             = fig.add_subplot(gs[0, 1])
+
     
-#     sim_direct = SimulationObject(Lx=Lx, Ly=Lx, Lz=Lz, Nx=N, Ny=N)
-#     source_direct = ConstantBeam(energy=E, simulation=sim_direct, z=0)
-#     lens_direct = Kinoform(wavelength=source_direct.wavelength, f=f, R=R, n=n,
-#                            simulation=sim_direct, z=z_lens)
-#     lens_direct.init_transmittance(source_direct)
-#     print(lens_direct.R)
-#     propagator_direct = AngularSpectrum(simulation=sim_direct)
+    ## 3-D plot
+    lens.plot_profile(ax=ax3d_placeholder, labels=labels, _3d=True)
     
-#     z_focal = z_lens + f
+    # 2-D copy
+    lens_copy = lens.copy(dim=1)
+    labels["ylabel"] = r"thickness [$\mu$m]"
+    lens_copy.plot_profile(ax=ax2d,             labels=labels, _3d=False, R_min=-1.01*lens.R, R_max=1.01*lens.R)
     
-#     print("Running direct propagation...")
-#     source_direct.propagate(z_lens, propagator_direct)
-#     lens_direct.transform(source_direct)
-#     source_direct.propagate(f, propagator_direct)
-#     I_direct_peak = source_direct.intensity().max()
-#     print(f"  Direct peak intensity at z={z_focal:.3f} m: {I_direct_peak:.6e}")
-    
+    fig.suptitle(rf"{type(lens).__name__} profile (f={lens.f:.3g} m, R={lens.R*1e6:.3g} $\mu$m)",)
+
+    out = savedir / "lens_profile.png"
+    fig.savefig(out, dpi=150)
+    print(f"Saved lens profile to {out}")
 
 if __name__ == "__main__":
     savedir.mkdir(parents=True, exist_ok=True)
 
-    # test_focal_intensity_consistency()
-    # quit()
-    E, f, R = 8.e3, 0.1, 1e-4
-    Lx, N = 3e-4, 10000
+    E, f, R = 8e3, 0.1, 1e-4
+    Lx, N = 3e-4, 100000
     Lz = 2*f
     n = xrl.Refractive_Index("Si", E / 1000, 2.329)
 
@@ -104,7 +105,6 @@ if __name__ == "__main__":
     source = GaussianBeam(energy=E, simulation=sim, z=0, w0=R/2)
     lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n,
                     simulation=sim, z=0.05)
-    # lens.init_transmittance(source)
 
     dz = 0.001
     z_lim = f + lens.z
@@ -117,7 +117,7 @@ if __name__ == "__main__":
     t_end = time.time()
     print(f"Time Taken: {t_end-t_start} s")
 
-    fig, ax = plt.subplots(figsize=(10, 4))
+    fig, ax = plt.subplots(figsize=(15, 2))
     print(I.max())
     norm = colors.LogNorm(vmin=1e-5, vmax=I.max())
     im = ax.imshow(I, norm=norm,

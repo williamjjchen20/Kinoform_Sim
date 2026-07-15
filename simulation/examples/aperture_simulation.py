@@ -70,16 +70,16 @@ def save_snapshot(wave, filename, title=None):
     plt.close(fig)
 
 def main():
-    N=1024
-    Lx=Ly=7e-5
+    N=2048
+    Lx=Ly=1e-4
     E = 8e3
     n = 100
     
-    aperture_width = 50e-6
+    aperture_width = 10e-6
     z_aperture = 0.0
     
-    dz = 500e-3 # needs to sweep
-    heights = np.array([0.25e-6])#np.linspace(0.1e-6, 50e-6, n)
+    dz = 100e-3 # needs to sweep
+    heights = np.array([50e-6])#np.linspace(0.1e-6, 50e-6, n)
     print(heights)
     fwhm = np.zeros_like(heights)
     
