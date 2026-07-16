@@ -342,6 +342,7 @@ class FZP(PhaseWrappedLens):
         self.zone_left = zone_locations[:-1]
         self.zone_right = zone_locations[1:]
         self.zone_widths = super().calc_zone_widths(self.zone_left, self.zone_right)
+        self.zone_heights = np.full(self.zones, self.height)
         super().__init__(f, zone_locations[-1], n, simulation, z,**kwargs)
         self.mutated = False
         
@@ -397,6 +398,7 @@ class Kinoform(PhaseWrappedLens):
         self.zone_left = zone_locations[:-1]
         self.zone_right = zone_locations[1:]
         self.zone_widths = super().calc_zone_widths(self.zone_left, self.zone_right)
+        self.zone_heights = np.full(self.zones, self.height)
         super().__init__(f, zone_locations[-1], n, simulation, z,**kwargs)
         
         self.R = zone_locations[-1]
@@ -553,7 +555,7 @@ class LensErrors():
         return profile, errors
     
     @staticmethod
-    def zone_shift(lens: Kinoform | FZP, err, verbose=False):
+    def zone_shift(lens: Kinoform | FZP, err: float | np.ndarray, verbose=False):
         m_total = int(np.ceil(lens.zones))
         # cumulative per-zone shift: eps[m] is applied to outer boundary r_m[m]
         if isinstance(err, (int, float)): 
@@ -563,7 +565,7 @@ class LensErrors():
             assert (len(err) <= m_total)
             err = np.asarray(err)
             
-        eps = np.cumsum(err)
+        # eps = np.cumsum(err)
         
         if lens.dim == 1:
             r = np.abs(lens.grid)
@@ -575,9 +577,9 @@ class LensErrors():
         # zone_locations = lens.zone_locations
         r_left_all, r_right_all = lens.zone_left, lens.zone_right#zone_locations[:-1], zone_locations[1:]
         
-        assert (len(eps) == len(r_left_all) == len(r_right_all))
+        assert (len(err) == len(r_left_all) == len(r_right_all))
         
-        for r_l, r_r, e, in zip(r_left_all, r_right_all, eps):
+        for r_l, r_r, e, in zip(r_left_all, r_right_all, err):
             mask = (r >= r_l) & (r < r_r)
             if not np.any(mask):
                 continue
@@ -602,8 +604,8 @@ class LensErrors():
         # if mutable:
         if verbose: print("Warning: Mutating original lens profile...")
         
-        r_left_new= r_left_all + eps
-        r_right_new = r_right_all + eps
+        r_left_new= r_left_all + err
+        r_right_new = r_right_all + err
         lens.reshape(r_left_new, r_right_new)
         profile *= lens.aperture_field > 0
             
@@ -772,7 +774,7 @@ class LensErrors():
         m_total = int(np.ceil(lens.zones))
 
         ms = np.atleast_1d(np.asarray(m)).astype(int)
-        ms = np.where(ms < 0, m_total + ms, ms)
+        ms = np.where(ms < 0, m_total + ms, ms) #type: ignore
         assert np.all((ms >= 0) & (ms < m_total)), f"m must be in [0, {m_total})"
         ms = np.unique(ms)
 
@@ -818,13 +820,15 @@ class LensErrors():
         assert len(errs) == len(r_taper_start)
         r_taper_end = r_taper_start + proportion*errs
         
+        # print(r_left_all[-5:], r_right_all[-5:], r_taper_start[-5:], r_taper_end[-5:], sep="\n")
+        
         if kinoform.dim == 1:
             r = np.abs(kinoform.grid)
         else:
             X, Y = kinoform.grid
             r = np.sqrt(X**2 + Y**2)
             
-        height = kinoform.height 
+        heights = kinoform.zone_heights 
         profile = np.asarray(kinoform.profile)
         
         points = []
@@ -841,22 +845,23 @@ class LensErrors():
                     new_mask = (r.ravel() >= r_l) & (r.ravel() < r_r_new)
                     new_r    = r.ravel()[new_mask]
                     n_new    = new_r.size
-
+                    height = heights[mi]
+                    
                     if n_new == 0:
                         points.append(np.column_stack([[r_l, r_r_new], [0., height]]))
                         ms_target.append(mi)
                         continue
 
                     r_mid  = 0.5 * (r_l + r_r)
-                    h_mid_orig = (np.sqrt(r_mid**2 + kinoform.f**2) - kinoform.f) / kinoform.delta % height
+                    h_mid = profile.flat[np.argmin(np.abs(r_mid-r))] #(np.sqrt(r_mid**2 + kinoform.f**2) - kinoform.f) / kinoform.delta % height
 
                     assert r_r > r_l,      f"zone {mi}: degenerate original zone [{r_l:.3e}, {r_r:.3e})"
                     assert r_r_new > r_l,  f"zone {mi}: new zone has zero width (r_l={r_l:.3e}, r_r_new={r_r_new:.3e})"
-                    assert 0. <= h_mid_orig <= height, \
-                        f"zone {mi}: midpoint height {h_mid_orig:.3e} outside [0, {height:.3e}]"
+                    assert 0. <= h_mid <= height, \
+                        f"zone {mi}: midpoint height {h_mid:.3e} outside [0, {height:.3e}]"
 
                     r_pts = np.array([r_l, 0.5*(r_l + r_r_new), r_r_new])
-                    h_pts = np.array([0.,  h_mid_orig,           height])
+                    h_pts = np.array([0.,  h_mid,           height])
                     coeffs = np.polyfit(r_pts, h_pts, 2)
 
                     interior_r = np.sort(new_r)
@@ -875,7 +880,7 @@ class LensErrors():
                 if ms_target:
                     profile, _ = LensErrors.zone_quantization(kinoform, points, m=np.array(ms_target))
 
-        for r1, r2 in zip(r_taper_start, r_taper_end):
+        for r1, r2, height in zip(r_taper_start, r_taper_end, heights):
             if r2 <= r1:
                 continue
             mask = (r <= r2) & (r >= r1)
@@ -886,6 +891,100 @@ class LensErrors():
         kinoform.reshape(r_left_all, r_taper_end)
 
         return profile, errs
+    
+    @staticmethod
+    def kinoform_zone_shrink(kinoform: Kinoform, err: float | np.ndarray, direction="out") -> tuple[np.ndarray, np.ndarray | None]:
+        errs = kinoform.add_error(LensErrors.kinoform_sidewall_taper, err=err, proportion=0., zone_shift=False)
+        if direction == "out":
+            errs = kinoform.add_error(LensErrors.zone_shift, err=err)
+        return kinoform.profile, errs
+    
+    @staticmethod
+    def kinoform_height_shrink(kinoform: Kinoform, height: float | np.ndarray, proportion=False) -> tuple[np.ndarray, np.ndarray | None]:
+
+        '''
+        Shrink each zone's peak height to a user-specified value while keeping
+        zone boundaries fixed. Within each zone, the profile is refit as a
+        quadratic through (r_l, 0), (r_mid, h_mid), (r_r, target_height),
+        where h_mid is the original profile height at r_mid rescaled by
+        target_height / kinoform.height (so the curvature shape is preserved).
+
+        args
+        - height: scalar target height applied to every zone, or 1D array of
+                  length == number of zone bands specifying per-zone targets.
+                  Each entry must lie in [0, kinoform.height].
+        '''
+        r_left_all  = np.asarray(kinoform.zone_left)
+        r_right_all = np.asarray(kinoform.zone_right)
+        
+        n_zones     = len(r_left_all)
+
+        if kinoform.dim == 1:
+            r = np.abs(kinoform.grid)
+        else:
+            X, Y = kinoform.grid
+            r = np.sqrt(X**2 + Y**2)
+        
+        h_full  = kinoform.zone_heights
+        heights = np.atleast_1d(np.asarray(height, dtype=np.float64))
+        if proportion: heights = heights*h_full
+        if heights.size == 1:
+            heights = np.full(n_zones, float(heights[0]))
+        assert heights.size == n_zones, \
+            f"height must be scalar or length-{n_zones} array (got {heights.size})"
+        assert np.all((heights >= 0.) & (heights <= h_full)), \
+            f"height values must lie in [0, {h_full:.3e}]"
+        
+
+        profile   = np.asarray(kinoform.profile)
+        points    = []
+        ms_target = []
+    
+        for mi, (r_l, r_r, h_target) in enumerate(zip(r_left_all, r_right_all, heights)):
+            if r_r <= r_l:
+                continue
+
+            zone_mask = (r.ravel() >= r_l) & (r.ravel() < r_r)
+            n_zone    = int(np.sum(zone_mask))
+
+            if n_zone == 0:
+                points.append(np.column_stack([[r_l, r_r], [0., h_target]]))
+                ms_target.append(mi)
+                continue
+
+            r_mid       = 0.5 * (r_l + r_r)
+            h_mid_orig  = float(profile.flat[np.argmin(np.abs(r - r_mid))])
+            scale       = h_target / h_full[mi] if h_full[mi] > 0 else 0.
+            h_mid       = np.clip(h_mid_orig * scale, 0., h_target)
+
+            assert 0. <= h_mid <= h_target, \
+                f"zone {mi}: midpoint height {h_mid:.3e} outside [0, {h_target:.3e}]"
+
+
+            r_pts  = np.array([r_l, r_mid, r_r])
+            h_pts  = np.array([0.,  h_mid, h_target])
+            coeffs = np.polyfit(r_pts, h_pts, 2)
+
+            zone_r = np.sort(r.ravel()[zone_mask])
+            zone_h = np.clip(np.polyval(coeffs, zone_r), 0., h_target)
+
+            assert zone_r[0] >= r_l and zone_r[-1] < r_r, \
+                f"zone {mi}: interior radii out of bounds [{r_l:.3e}, {r_r:.3e})"
+
+            zone_pts = np.column_stack([
+                np.concatenate([[r_l], zone_r, [r_r]]),
+                np.concatenate([[0.],  zone_h, [h_target]]),
+            ])
+            points.append(zone_pts)
+            ms_target.append(mi)
+
+        if ms_target:
+            profile, _ = LensErrors.zone_quantization(kinoform, points, m=np.array(ms_target))
+            
+        kinoform.zone_heights = heights
+
+        return profile, heights
+        
 
     @staticmethod
     def kinoform_zone_warping(kinoform: Kinoform, R_min=None, R_max=None, beam_width=1e-8) -> tuple[np.ndarray, np.ndarray | None]:
@@ -958,9 +1057,6 @@ class LensErrors():
                 rq_c = np.clip(rq, zone_r.min(), zone_r.max())
                 local = np.argmin(np.abs(zone_r - rq_c))
                 return zone_profile[local]
-
-            h_l = 0 #sample(r_l)
-            h_r = h #sample(r_r)
             
             ## logistic sampling function for height
             # p in (0, 1]: fraction of the zone that a single beam spans.
@@ -977,6 +1073,10 @@ class LensErrors():
  
             sampling_r = a/(1+np.exp(-mag*xs))+b
             interior_h = np.array([sample(rq) for rq in sampling_r])
+            
+            h_l = 0 #sample(r_l)
+            h_r = interior_h[-1] #sample(r_r)
+            print(np.abs(r_r-sampling_r[-1]))
 
             zone_pts = np.column_stack([
                 np.concatenate([[r_l], interior_r, [r_r]]),
