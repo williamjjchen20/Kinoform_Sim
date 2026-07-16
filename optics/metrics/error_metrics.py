@@ -41,14 +41,16 @@ def _safe_call(f, wave):
 
 def error_metrics(source_factory, lens_factory, propagator, error_func, sweep_param,
                   err_values, metrics=(focal_efficiency, FWHM),
-                  labels=None, E_range=None, error_kwargs=None, savepath=None):
+                  labels=None, E_range=None, error_kwargs=None, savepath=None,
+                  design_labels=None):
     '''
     Sweep an error magnitude (etch depth, taper proportion, zone #, ...) and
     record the requested focal-plane metric fields for each value of E in `E_range`.
 
     args
     - source_factory: callable() -> fresh Waveform (with its own SimulationObject)
-    - lens_factory:   callable(source, wavelength) -> fresh ThinLens bound to that source
+    - lens_factory:   callable(source, wavelength) -> fresh ThinLens, OR a list
+                      of such callables to sweep multiple lens designs.
     - propagator:     propagation function passed to wave.propagate
     - error_func:     staticmethod from LensErrors (e.g. LensErrors.random_etch)
     - sweep_param:    name of the kwarg on error_func that takes err_values
@@ -58,71 +60,87 @@ def error_metrics(source_factory, lens_factory, propagator, error_func, sweep_pa
                       per-run reference wave / P_in / airy radius.
     - error_kwargs:   extra kwargs forwarded to error_func (e.g. {"interval": 3, "seed": 0})
     - savepath:       optional path to save the sweep plot
+    - design_labels:  optional list of display names, one per lens_factory
+                      (only used when lens_factory is a list)
 
     Returns (results, refs), where
-      - results is a list (per E_off) of lists of metric arrays, ordered to match `metrics`.
-      - refs is a list (per E_off) of dicts {metric_name: reference value} from the
-        ideal (error-free, design-wavelength) reference lens illuminated at E_off.
+      - results is a flat list of series (metric-lists), ordered
+        [design0/E0, design0/E1, ..., design1/E0, ...].
+      - refs mirrors that ordering with dicts {metric_name: reference value}
+        from the ideal (error-free, design-wavelength) reference lens
+        illuminated at E_off.
     '''
     error_kwargs = dict(error_kwargs or {})
     err_values = np.asarray(list(err_values), dtype=float)
     metric_names = [m.__name__ for m in metrics]
 
-    # Design-energy reference (used only to fix the lens wavelength)
+    # Accept a single factory or a list of factories (one per lens design).
+    if callable(lens_factory):
+        lens_factories = [lens_factory]
+    else:
+        lens_factories = list(lens_factory)
+    if design_labels is None:
+        design_labels = [f"design{d}" for d in range(len(lens_factories))]
+    assert len(design_labels) == len(lens_factories), \
+        "design_labels length must match number of lens factories"
+
+    # Design-energy reference (used only to fix the lens wavelength).
+    # Use the first factory to sample the design wavelength.
     design_source = source_factory()
 
     results = []
     refs = []
     if E_range is None: E_range = [design_source.energy]
 
-    for E_off in E_range:
-        print("="*50)
-        print("E [eV]:", E_off)
-        out = {name: np.zeros(len(err_values)) for name in metric_names}
+    for d_idx, (lf, d_name) in enumerate(zip(lens_factories, design_labels)):
+        for E_off in E_range:
+            print("="*50)
+            print(f"design={d_name}  E [eV]:", E_off)
+            out = {name: np.zeros(len(err_values)) for name in metric_names}
 
-        # Per-energy ideal reference: design-wavelength lens, no errors,
-        # illuminated by an off-energy source. Defines Strehl=1 at err=0.
-        ref_source = source_factory(E=E_off)
-        ref_lens = lens_factory(ref_source, wavelength=design_source.wavelength)
-        ref_source.filter(ref_lens)
-        ref_P_in = total_power(ref_source)
-        ref_lens.init_transmittance(ref_source)
-        ref_lens.transform(ref_source)
-        ref_source.propagate(ref_lens.f, propagator)
+            # Per-energy ideal reference: design-wavelength lens, no errors,
+            # illuminated by an off-energy source. Defines Strehl=1 at err=0.
+            ref_source : Waveform = source_factory(E=E_off)
+            ref_lens : Kinoform = lf(ref_source, wavelength=design_source.wavelength) # type:ignore
+            ref_source.filter(ref_lens)
+            ref_P_in = total_power(ref_source)
+            ref_lens.init_transmittance(ref_source)
+            ref_lens.transform(ref_source)
+            ref_source.propagate(ref_lens.f, propagator)
 
-        # Reference metric values (used for ylim_spread around baseline). Bind
-        # the reference against itself so strehl_ratio(ref, ref) = 1.
-        ref_radius = 1.22*ref_source.wavelength*ref_lens.f/(2*ref_lens.R)
-        ref_vals = {}
-        for m, name in zip(metrics, metric_names):
-            bound = _bind_metric(m, ref_source=ref_source,
-                                 P_in=ref_P_in, radius=ref_radius)
-            ref_vals[name] = _safe_call(bound, ref_source)
-        refs.append(ref_vals)
-        print("ref:", "  ".join(f"{k}={v:.3e}" for k, v in ref_vals.items()))
-
-        for i, e in enumerate(err_values):
-            source = source_factory(E=E_off)
-            ## lens designed for the design energy, illuminated at E_off
-            lens = lens_factory(source, wavelength=design_source.wavelength)
-            source.filter(lens)
-            P_in = total_power(source)
-
-            lens.add_error(error_func, **{sweep_param: float(e)}, **error_kwargs)
-            lens.init_transmittance(source)
-            lens.transform(source)
-            source.propagate(lens.f, propagator)
-
-            radius = 1.22*source.wavelength*lens.f/(2*lens.R)
+            # Reference metric values (used for ylim_spread around baseline). Bind
+            # the reference against itself so strehl_ratio(ref, ref) = 1.
+            ref_radius = 1.22*ref_source.wavelength*ref_lens.f/(2*ref_lens.R)
+            ref_vals = {}
             for m, name in zip(metrics, metric_names):
                 bound = _bind_metric(m, ref_source=ref_source,
-                                     P_in=P_in, radius=radius)
-                out[name][i] = _safe_call(bound, source)
+                                     P_in=ref_P_in, radius=ref_radius)
+                ref_vals[name] = _safe_call(bound, ref_source)
+            refs.append(ref_vals)
+            print("ref:", "  ".join(f"{k}={v:.3e}" for k, v in ref_vals.items()))
 
-            print(f"[{i+1}/{len(err_values)}] {sweep_param}={e:.3e}  "
-                  + "  ".join(f"{k}={out[k][i]:.3e}" for k in out))
+            for i, e in enumerate(err_values):
+                source = source_factory(E=E_off)
+                ## lens designed for the design energy, illuminated at E_off
+                lens : Kinoform = lf(source, wavelength=design_source.wavelength) #type:ignore
+                source.filter(lens)
+                P_in = total_power(source)
 
-        results.append([out[name] for name in metric_names])
+                lens.add_error(error_func, **{sweep_param: float(e)}, **error_kwargs)
+                lens.init_transmittance(source)
+                lens.transform(source)
+                source.propagate(lens.f, propagator)
+
+                radius = 1.22*source.wavelength*lens.f/(2*lens.R)
+                for m, name in zip(metrics, metric_names):
+                    bound = _bind_metric(m, ref_source=ref_source,
+                                         P_in=P_in, radius=radius)
+                    out[name][i] = _safe_call(bound, source)
+
+                print(f"[{i+1}/{len(err_values)}] {sweep_param}={e:.3e}  "
+                      + "  ".join(f"{k}={out[k][i]:.3e}" for k in out))
+
+            results.append([out[name] for name in metric_names])
 
     if savepath is not None:
         plot_sweep(err_values, results, labels or {}, savepath,
@@ -158,7 +176,7 @@ def _draw_sweep_row(ax_row, err, vals, labels, row_title=None,
     ylim_spread = labels.get("ylim_spread", [None] * n_metrics)
 
     label     = labels.get("label",     [""]     * n_series)
-    marker    = labels.get("marker",    ["o"]    * n_series)
+    marker    = labels.get("marker",    [None]    * n_series)
     color     = labels.get("color",     [None]   * n_series)
     linestyle = labels.get("linestyle", ["-"]    * n_series)
     alpha     = labels.get("alpha",     [1.0]    * n_series)
@@ -246,7 +264,7 @@ def _draw_sweep_column(ax_col, err, vals, labels, col_title=None,
     ylim_spread = labels.get("ylim_spread", [None] * n_metrics)
 
     label     = labels.get("label",     [""]     * n_series)
-    marker    = labels.get("marker",    ["o"]    * n_series)
+    marker    = labels.get("marker",    [None]    * n_series)
     color     = labels.get("color",     [None]   * n_series)
     linestyle = labels.get("linestyle", ["-"]    * n_series)
     alpha     = labels.get("alpha",     [1.0]    * n_series)
@@ -321,38 +339,93 @@ def main():
 
     propagator = AngularSpectrum(source_factory().simulation)
     
-    def lens_factory(src, wavelength = None, f=f, R=R, n=n) -> Kinoform:
-        if wavelength is None: wavelength = src.wavelength
-        return Kinoform(wavelength=wavelength, f=f, R=R, n=n,
-                        simulation=src.simulation, z=0)
-    
+    def make_lens_factory(f=f, R=R, n=n):
+        def _lf(src, wavelength=None) -> Kinoform:
+            if wavelength is None: wavelength = src.wavelength
+            return Kinoform(wavelength=wavelength, f=f, R=R, n=n,
+                            simulation=src.simulation, z=0)
+        return _lf
+
+    # One or more lens designs to compare. Each entry: (display_label, factory).
+    lens_designs = []
+    print("="*60)
+    print("Lens Designs (blank focal length to finish; blank on first prompt = default)")
+    print(f"  default: f={f} m, R={R*1e6:g} um")
+    print("="*60)
+    while True:
+        idx = len(lens_designs) + 1
+        f_str = input(f"  Design #{idx}  focal length f [m] (blank = done): ").strip()
+        if f_str == "":
+            break
+        R_str = input(f"              aperture radius R [m]: ").strip()
+        try:
+            f_i = float(f_str)
+            R_i = float(R_str)
+        except ValueError:
+            print("  Invalid input; skipping.")
+            continue
+        label = f"f={f_i:g} m, R={R_i*1e6:g} um"
+        lens_designs.append((label, make_lens_factory(f=f_i, R=R_i, n=n)))
+        print(f"  + added {label}")
+    if not lens_designs:
+        lens_designs = [(f"f={f} m, R={R*1e6:g} um", make_lens_factory(f=f, R=R, n=n))]
+        print(f"  Using default design: {lens_designs[0][0]}")
+
+    design_labels   = [d[0] for d in lens_designs]
+    lens_factories  = [d[1] for d in lens_designs]
+
     ## Initialize reference parameters
         
-    E_range = np.array([0.999*E, E, 1.001*E])
-    metrics= (focal_efficiency, FWHM, max_intensity) #("P_eff", "FWHM", "Strehl")
+    E_range = np.array([E])
+    metrics= (focal_efficiency, FWHM) #("P_eff", "FWHM", "Strehl")
 
-    # Foreground the design-energy curve; push off-energy curves back
-    # (dashed, no markers, lower alpha, thinner) so the reference reads first.
+    # Style scheme:
+    #   color     -> per-energy (design energy = black, off-energy = gray)
+    #   linestyle -> per-design (first design solid, others dashed/dotted/...)
+    # Series ordering from error_metrics: [design0/E0, design0/E1, ..., design1/E0, ...]
     design_idx = int(np.argmin(np.abs(E_range - E)))
     n_E = len(E_range)
-    is_design   = [i == design_idx for i in range(n_E)]
-    series_color     = ["black" if d else "gray" for d in is_design]
-    series_marker    = ["o"     if d else ""     for d in is_design]
-    series_linestyle = ["-"     if d else "--"   for d in is_design]
-    series_alpha     = [1.0     if d else 0.55   for d in is_design]
-    series_linewidth = [1.8     if d else 1.0    for d in is_design]
-    series_zorder    = [3       if d else 2      for d in is_design]
-    series_labels    = [f"E={E_i/1000} keV" + (" (design)" if is_design[i] else "")
-                        for i, E_i in enumerate(E_range)]
+    n_D = len(lens_factories)
+    is_design_E = [i == design_idx for i in range(n_E)]
+    E_color      = ["black" if d else "gray" for d in is_design_E]
+    E_alpha      = [1.0     if d else 0.55   for d in is_design_E]
+    E_linewidth  = [1.8     if d else 1.0    for d in is_design_E]
+    E_zorder     = [3       if d else 2      for d in is_design_E]
+    E_labels     = [f"E={E_i/1000} keV" + (" (design)" if is_design_E[i] else "")
+                    for i, E_i in enumerate(E_range)]
+    D_linestyles = ["-", "--", ":", "-."]
+    D_markers    = ["o", "s", "^", "d"]
+
+    series_color, series_alpha, series_linewidth = [], [], []
+    series_zorder, series_linestyle, series_marker, series_labels = [], [], [], []
+    for d in range(n_D):
+        ls = D_linestyles[d % len(D_linestyles)]
+        mk = D_markers[d % len(D_markers)]
+        for e in range(n_E):
+            series_color.append(E_color[e])
+            series_alpha.append(E_alpha[e])
+            series_linewidth.append(E_linewidth[e])
+            series_zorder.append(E_zorder[e])
+            series_linestyle.append(ls)
+            series_marker.append(mk)
+            if n_D == 1:
+                series_labels.append(E_labels[e])
+            elif n_E == 1:
+                series_labels.append(design_labels[d])
+            else:
+                series_labels.append(f"{design_labels[d]}, {E_labels[e]}")
+
     series_style = {
         "label":     series_labels,
-        "marker":    series_marker,
+        # "marker":    series_marker,
         "color":     series_color,
         "linestyle": series_linestyle,
         "alpha":     series_alpha,
         "linewidth": series_linewidth,
         "zorder":    series_zorder,
     }
+    
+    print("labels:", series_labels)
 
     # Collect each accepted sweep so we can render a single combined figure at the end.
     sweeps = []
@@ -361,10 +434,11 @@ def main():
         # override per-series styling with the shared design/off-energy scheme
         labels = {**series_style, **labels}
         results, refs = error_metrics(
-            source_factory, lens_factory, propagator,
+            source_factory, lens_factories, propagator,
             error_func, sweep_param, err_values,
             metrics=metrics, E_range=E_range,
             labels=labels, error_kwargs=error_kwargs, savepath=savepath,
+            design_labels=design_labels,
         )
         sweeps.append({"name": name, "err": err_values,
                        "vals": results, "labels": labels,
@@ -379,9 +453,9 @@ def main():
                     "yscale": ["linear", "linear", "linear"],
                     "x_scale_factor":  1.0,
                     "y_scale_factor": [1.0, 1e9, 1.0],
-                    "label": [f"E={E_i/1000} keV" for E_i in E_range],
-                    "title": rf"Cap Floor for (E={E/1000} keV, f={f} m, R={R*1e6} $\mu m$) Kinoform",
-                    "marker": ["o", "^", "s", "d", "x"],
+                    # "label": [f"E={E_i/1000} keV" for E_i in E_range],
+                    "title": rf"Error Metric",
+                    # "marker": ["o", "^", "s", "d", "x"],
                      }
     match input("Analyze random etch? (y/n): "):
         case "y": 
@@ -417,11 +491,13 @@ def main():
     ### Kinoform sidewall taper
     match input("Analyze kinoform sidewall taper? (y/n): "):
         case "y":
-            err_values = np.linspace(0, 1e-7, 10)
+            err_values = np.linspace(0, 1e-7, 50)
             p = 1.0
             labels = { **shared_labels,
-                    "xlabel": [r"Sidewall Taper Error $[nm]$"] * len(metrics),
+                    "xlabel": [r"Sidewall Taper $[nm]$"] * len(metrics),
                     "x_scale_factor":  1e9,                 # m -> um
+                    "yscale": ["linear", "log"],
+                    "title": "Sidewall Taper"
                 }
             out = savedir / "sidewall_taper_vs_intensity.png"
             _run("Sidewall Taper", LensErrors.kinoform_sidewall_taper, "err", err_values,
@@ -472,6 +548,40 @@ def main():
                  err_values, labels, out)
         case _:
             print("Skipping zone warping.")
+            
+    ### Zone warping (sweep beam_width)
+    match input("Analyze zone shrink? (y/n): "):
+        case "y":
+            err_values = np.linspace(0, 1e-7, 50)
+            labels = { **shared_labels,
+                    "xlabel": [r"Error $[nm]$"] * len(metrics),
+                    "xscale": ["linear"] * len(metrics),
+                    "x_scale_factor": 1e9,
+                    "yscale": ["linear", "log"],
+                    "title": "Zone Shrink"
+                }
+            out = savedir / "zone_shrink_vs_intensity.png"
+            _run("Zone Shrink", LensErrors.kinoform_zone_shrink, "err",
+                 err_values, labels, out)
+        case _:
+            print("Skipping zone shrink.")
+            
+    ### Zone warping (sweep beam_width)
+    match input("Analyze height shrink? (y/n): "):
+        case "y":
+            err_values = np.linspace(1.0, 0.2, 50)
+            labels = { **shared_labels,
+                    "xlabel": [r"Proportion"] * len(metrics),
+                    "xscale": ["linear"] * len(metrics),
+                    "x_scale_factor": 1.0,
+                    "yscale": ["linear", "log"],
+                    "title": "Height Proportion"
+                }
+            out = savedir / "height_shrink_vs_intensity.png"
+            _run("Height Shrink", LensErrors.kinoform_height_shrink, "height",
+                 err_values, labels, out)
+        case _:
+            print("Skipping zone shrink.")
 
     ### Combined figure across all accepted sweeps
     if sweeps:
