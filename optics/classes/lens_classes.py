@@ -800,25 +800,23 @@ class LensErrors():
         profile = profile * (lens.aperture_field > 0)
         return profile, None
     
-    @staticmethod 
-    def kinoform_zone_placement(kinoform: Kinoform, direction:str="in") -> tuple[np.ndarray, np.ndarray | None]:
-        profile = np.asarray(kinoform.profile)
-        
-        return profile, None
-    
     @staticmethod
-    def kinoform_sidewall_taper(kinoform: Kinoform, err: float | np.ndarray, proportion=1., zone_shift=False) -> tuple[np.ndarray, np.ndarray | None]:
+    def kinoform_sidewall_taper(kinoform: Kinoform, err: float | np.ndarray, proportion=1., zone_shift=False, reshape=False) -> tuple[np.ndarray, np.ndarray | None]:
+        
+        r_left_all = np.asarray(kinoform.zone_left)
+        r_right_all = np.asarray(kinoform.zone_right)
         
         if zone_shift:
             errs = kinoform.add_error(LensErrors.zone_shift, err=err)
         else:
             errs = kinoform.add_error(LensErrors.zone_removal, err=err, m=0, extend=True, direction="in", remove_last=False, mutable=True)
-
+            
         assert errs is not None
+        
 
-
-        r_start = np.asarray(kinoform.zone_right) #np.array(kinoform.zone_locations[:-1])
-        r_end = r_start + proportion*errs
+        r_taper_start = np.asarray(kinoform.zone_right) #np.array(kinoform.zone_locations[:-1])
+        assert len(errs) == len(r_taper_start)
+        r_taper_end = r_taper_start + proportion*errs
         
         if kinoform.dim == 1:
             r = np.abs(kinoform.grid)
@@ -828,21 +826,64 @@ class LensErrors():
             
         height = kinoform.height 
         profile = np.asarray(kinoform.profile)
-    
-        if np.count_nonzero(errs) != 0: 
-            for r1, r2 in zip(r_start, r_end):
-                
-                # ids = np.argsort(np.abs(r-r1)) # left and right from the symmetric zone boundaries
-                # heights = profile.ravel()[ids]
-                # sample = heights[heights > 0]
-                # height = sample[0]
-                
-                mask = (r <= r2) & (r >= r1)
-                r_mask = r[mask]
-                taper = -height/(r2-r1)*(r_mask-r2)
-                profile[mask] = taper
+        
+        points = []
+        ms_target = []
 
-            kinoform.reshape(kinoform.zone_left, r_end)
+        if np.count_nonzero(errs) != 0:
+            if not zone_shift:
+                # kinoform.reshape(kinoform.zone_left, r_taper_end)
+
+                for mi, (r_l, r_r, r_r_new) in enumerate(zip(r_left_all, r_right_all, r_taper_start)):
+                    if r_r_new <= r_l:
+                        continue
+
+                    new_mask = (r.ravel() >= r_l) & (r.ravel() < r_r_new)
+                    new_r    = r.ravel()[new_mask]
+                    n_new    = new_r.size
+
+                    if n_new == 0:
+                        points.append(np.column_stack([[r_l, r_r_new], [0., height]]))
+                        ms_target.append(mi)
+                        continue
+
+                    r_mid  = 0.5 * (r_l + r_r)
+                    h_mid_orig = (np.sqrt(r_mid**2 + kinoform.f**2) - kinoform.f) / kinoform.delta % height
+
+                    assert r_r > r_l,      f"zone {mi}: degenerate original zone [{r_l:.3e}, {r_r:.3e})"
+                    assert r_r_new > r_l,  f"zone {mi}: new zone has zero width (r_l={r_l:.3e}, r_r_new={r_r_new:.3e})"
+                    assert 0. <= h_mid_orig <= height, \
+                        f"zone {mi}: midpoint height {h_mid_orig:.3e} outside [0, {height:.3e}]"
+
+                    r_pts = np.array([r_l, 0.5*(r_l + r_r_new), r_r_new])
+                    h_pts = np.array([0.,  h_mid_orig,           height])
+                    coeffs = np.polyfit(r_pts, h_pts, 2)
+
+                    interior_r = np.sort(new_r)
+                    interior_h = np.clip(np.polyval(coeffs, interior_r), 0., height)
+
+                    assert interior_r[0] >= r_l and interior_r[-1] < r_r_new, \
+                        f"zone {mi}: interior radii out of bounds [{r_l:.3e}, {r_r_new:.3e})"
+
+                    zone_pts = np.column_stack([
+                        np.concatenate([[r_l], interior_r, [r_r_new]]),
+                        np.concatenate([[0.],  interior_h,  [height]]),
+                    ])
+                    points.append(zone_pts)
+                    ms_target.append(mi)
+
+                if ms_target:
+                    profile, _ = LensErrors.zone_quantization(kinoform, points, m=np.array(ms_target))
+
+        for r1, r2 in zip(r_taper_start, r_taper_end):
+            if r2 <= r1:
+                continue
+            mask = (r <= r2) & (r >= r1)
+            r_mask = r[mask]
+            taper = -height / (r2 - r1) * (r_mask - r2)
+            profile[mask] = taper
+            
+        kinoform.reshape(r_left_all, r_taper_end)
 
         return profile, errs
 
