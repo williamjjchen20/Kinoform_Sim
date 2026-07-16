@@ -9,6 +9,38 @@ script_dir = Path(__file__).resolve().parent
 savedir = (script_dir / "../test_figs/error_test").resolve()
 savedir.mkdir(parents=True, exist_ok=True)
 
+def test_noop():
+    Lx, Lz = 3e-4, 10000
+    N = 100000
+
+    E = 8.e3
+    f = 1.0
+    R = 5e-5
+    n = xrl.Refractive_Index("Si", E / 1000, 2.329)
+
+    simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz)
+
+    source = ConstantBeam(energy=E, simulation=simulation, z=0)
+    lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n,
+                    simulation=simulation, z=0)
+
+    print("Zones:", lens.zones)
+    
+    E = 8.e3
+    f = 0.1
+    R = 1e-4
+    n = xrl.Refractive_Index("Si", E / 1000, 2.329)
+
+    simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz)
+
+    source = ConstantBeam(energy=E, simulation=simulation, z=0)
+    lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n,
+                    simulation=simulation, z=0)
+
+    print("Zones:", lens.zones)
+    
+    
+
 def test_kinoform_etch(err):
     print("Testing Kinoform with systematic etch error (1D)...")
     Lx, Lz = 1.5e-4, 10000
@@ -308,11 +340,11 @@ def test_multierror():
     print("Testing Kinoform Multierror (1D)...")
     
     Lx, Lz = 6e-4, 10000
-    N = 100000
+    N = 1000000
 
     E = 8.e3
     f = 0.5
-    R = 2e-4
+    R = 1e-4
     n = xrl.Refractive_Index("Si", E / 1000, 2.329)
 
     simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz)
@@ -327,11 +359,11 @@ def test_multierror():
 
     print("Kinoform Height:", lens.height)
     print(lens.zone_widths[-1])
-    lens.add_error(LensErrors.zone_shift, err=1e-7)
-    lens.add_error(LensErrors.kinoform_zone_warping, R_min=0, R_max=lens.R, beam_width=beam_width)
+    # lens.add_error(LensErrors.zone_shift, err=1e-7)
+    # lens.add_error(LensErrors.kinoform_zone_warping, R_min=0, R_max=lens.R, beam_width=beam_width)
     lens.add_error(LensErrors.kinoform_sidewall_taper, err=1e-7,proportion=1.)
-    lens.add_error(LensErrors.cap_floor, h=0.01, proportion=True)
-    lens.add_error(LensErrors.cap_height, h=0.98, proportion=True)
+    # lens.add_error(LensErrors.cap_floor, h=0.01, proportion=True)
+    # lens.add_error(LensErrors.cap_height, h=0.98, proportion=True)
     print(lens.zone_locations[-1], lens.R)
     
     print("Outer Zone Width:", lens.zone_widths[-1])
@@ -344,7 +376,9 @@ def test_multierror():
     ax.axhline(0, color="black", lw=0.5)
     ax.set(xlabel="x [um]", ylabel="thickness [m]",
            title=f"Kinoform profile")
-    ax.set_xlim(0.95*lens.R*1e6, 1.01*lens.R*1e6)
+    ax.set_xlim(0.96*lens.R*1e6, lens.R*1e6)
+    
+    # lens.plot_profile(ax=ax, R_min=0.99*lens.R)
 
     out = savedir / f"Kinoform_error_profile.png"
     fig.savefig(out)
@@ -401,21 +435,21 @@ def test_FZP_error():
     print("Testing Kinoform Multierror (1D)...")
     
     Lx, Lz = 5e-4, 10000
-    N = 10000
+    N = 1000000
 
     E = 8.e3
-    f = 1.0
-    R = 5e-5
+    f = 0.1
+    R = 1e-4
     n = xrl.Refractive_Index("Si", E / 1000, 2.329)
 
     simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz)
 
     source = ConstantBeam(energy=E, simulation=simulation, z=0)
     lens = FZP(wavelength=source.wavelength, f=f, R=R, n=n,
-                    simulation=simulation, z=0, positive=True)
+                    simulation=simulation, z=0, full=True, positive=True)
     print("FZP Height:", lens.height)
 
-    lens.add_error(LensErrors.FZP_sidewall_taper, err=1e-6)
+    lens.add_error(LensErrors.FZP_sidewall_taper, err=2e-8)
 
     print("Outer Zone Width:", lens.zone_widths[-1])
     
@@ -427,7 +461,7 @@ def test_FZP_error():
     ax.axhline(0, color="black", lw=0.5)
     ax.set(xlabel="x [m]", ylabel="thickness [m]",
            title=f"FZP profile")
-    ax.set_xlim(-lens.R, lens.R)
+    ax.set_xlim(0.99*lens.R, 1.01*lens.R)
 
     out = savedir / f"FZP_error_profile.png"
     fig.savefig(out)
@@ -436,15 +470,16 @@ def test_FZP_error():
     
 if __name__ == "__main__":
     max_err = 5e-8
-    test_kinoform_etch(max_err)
-    test_kinoform_random_etch(max_err)
-    test_gaussian_etch(max_err)
-    test_gaussian_etch(max_err, invert=True)
-    test_zone_removal(1e-6)
-    test_zone_shift(1e-6)
-    test_taper(1e-6)
-    test_zone_quantization()
-    test_zone_warping()
+    # test_noop()
+    # test_kinoform_etch(max_err)
+    # test_kinoform_random_etch(max_err)
+    # test_gaussian_etch(max_err)
+    # test_gaussian_etch(max_err, invert=True)
+    # test_zone_removal(1e-6)
+    # test_zone_shift(1e-6)
+    # test_taper(1e-6)
+    # test_zone_quantization()
+    # test_zone_warping()
     test_multierror()
-    test_reference()
-    test_FZP_error()
+    # test_reference()
+    # test_FZP_error()
