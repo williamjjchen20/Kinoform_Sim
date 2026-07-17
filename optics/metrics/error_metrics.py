@@ -209,6 +209,8 @@ def _draw_sweep_row(ax_row, err, vals, labels, row_title=None,
     else:
         ref_for_row = None
 
+    invert_x = labels.get("invert_x", False)
+
     for j in range(n_metrics):
         if xlim[j] is not None:
             ax_row[j].set_xlim(xlim[j])
@@ -222,6 +224,8 @@ def _draw_sweep_row(ax_row, err, vals, labels, row_title=None,
                 lo = (ref_v - spread) * y_scale_factor[j]
                 hi = (ref_v + spread) * y_scale_factor[j]
                 ax_row[j].set_ylim(lo, hi)
+        if invert_x:
+            ax_row[j].invert_xaxis()
 
     if any(lbl for lbl in label):
         ax_row[-1].legend()
@@ -281,6 +285,11 @@ def _draw_sweep_column(ax_col, err, vals, labels, col_title=None,
                            linewidth=linewidth[i], zorder=zorder[i])
             ax_col[j].set(xlabel=xlabel[j], ylabel=ylabel[j],
                           xscale=xscale[j], yscale=yscale[j])
+
+    invert_x = labels.get("invert_x", False)
+    if invert_x:
+        for j in range(n_metrics):
+            ax_col[j].invert_xaxis()
 
     if any(lbl for lbl in label):
         ax_col[0].legend()
@@ -575,6 +584,7 @@ def main():
                     "xscale": ["linear"] * len(metrics),
                     "x_scale_factor": 1.0,
                     "yscale": ["linear", "log"],
+                    "invert_x": True,
                     "title": "Height Proportion"
                 }
             out = savedir / "height_shrink_vs_intensity.png"
