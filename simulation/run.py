@@ -27,7 +27,7 @@ parser.add_argument("--save", type=bool, default=False, help="flag to save param
 
 
 def _prompt(label: str, cast, saved_val):
-    if saved_val is not None: return saved_val
+    # if saved_val is not None: return saved_val
     hint = f" [{saved_val}]"
     raw = input(f"  > {label}{hint}: ").strip()
     return cast(raw)
@@ -194,13 +194,10 @@ def main():
     params = load_params(args.params)
     
     source, source_params = __initialize_source(simulation, params.get("source", dict()))
-    print(source_params)
     if source is None: raise Exception("Source is not defined.")
     aperture, aperture_params = __initialize_aperture(simulation, params.get("aperture", dict()))
-    print(aperture_params)
     lens, lens_params = __initialize_lens(simulation, source, params.get("lens", dict()))
-    print(lens_params)
-
+    
     if args.save:
         new_params = {"source": source_params, "aperture": aperture_params, "lens": lens_params}
         save_params(args.params, new_params)
