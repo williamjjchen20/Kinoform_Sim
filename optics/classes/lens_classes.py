@@ -456,6 +456,9 @@ class LensErrors():
         mask = lens.profile > h_max
         profile = lens.profile
         profile[mask] = h_max
+        
+        lens.height = h_max
+        lens.zone_heights[lens.zone_heights > h_max] = h_max
         return profile, None
     
     @staticmethod
@@ -718,36 +721,54 @@ class LensErrors():
     @staticmethod
     def FZP_sidewall_taper(FZP: FZP, err: float | np.ndarray, proportion=1.) -> tuple[np.ndarray, np.ndarray | None]:
         zone_locations = np.array(FZP.zone_locations)
-        zone_locations = zone_locations[zone_locations > 0]
-        
+        # Transparent-zone boundaries.
+        # zone_locations = [0, r_1, r_2, r_3, ...].
+        # positive=True : transparent bands have odd r_z index → left edges at
+        #   zone_locations[1::2], right edges at zone_locations[2::2].
+        # positive=False: transparent bands have even r_z index → left edges at
+        #   zone_locations[0::2], right edges at zone_locations[1::2].
+        #   The innermost left edge is r=0; skip it to avoid a zero-width taper.
         if FZP.positive:
-            r_left, r_right = zone_locations[:-1:2], zone_locations[1:-1:2]
+            r_left  = zone_locations[1::2]
+            r_right = zone_locations[2::2]
         else:
-            r_right, r_left = zone_locations[:-1:2], zone_locations[1:-1:2]
+            r_left  = zone_locations[0::2][1:]   # skip the r=0 centre boundary
+            r_right = zone_locations[1::2]
 
-        r_start, r_end = r_left - proportion*err, r_right + proportion*err
-        
+        n_zones = min(len(r_left), len(r_right))
+        r_left  = r_left[:n_zones]
+        r_right = r_right[:n_zones]
+
+        errs = np.atleast_1d(np.asarray(err, dtype=float))
+        if errs.size == 1:
+            errs = np.full(n_zones, float(errs[0]))
+        assert errs.size == n_zones, \
+            f"err length {errs.size} does not match {n_zones} transparent zones"
+
+        r_start = np.maximum(r_left  - proportion * errs, 0.)
+        r_end   = r_right + proportion * errs
+
         if FZP.dim == 1:
             r = np.abs(FZP.grid)
         else:
             X, Y = FZP.grid
             r = np.sqrt(X**2 + Y**2)
-            
-        t0 = FZP.height 
-        profile = FZP.profile
-        
+
+        t0      = FZP.height
+        profile = np.array(FZP.profile)
+
         for r1, r2, r3, r4 in zip(r_start, r_left, r_right, r_end):
-            mask_left = (r <= r2) & (r >= r1)
-            r_mask = r[mask_left]
-            taper_left = t0/(r2-r1)*(r_mask-r1)
-            profile[mask_left] = taper_left
-            
-            mask_right = (r <= r4) & (r >= r3)
-            r_mask = r[mask_right]
-            taper_right = -t0/(r4-r3)*(r_mask-r4)
-            profile[mask_right] = taper_right
-        
-        return profile, None
+            if r2 > r1:
+                mask_left  = (r >= r1) & (r < r2)
+                r_mask     = r[mask_left]
+                profile[mask_left] = t0 / (r2 - r1) * (r_mask - r1)
+
+            if r4 > r3:
+                mask_right = (r >= r3) & (r < r4)
+                r_mask     = r[mask_right]
+                profile[mask_right] = -t0 / (r4 - r3) * (r_mask - r4)
+
+        return profile, errs
     
     @staticmethod
     def zone_quantization(lens: Kinoform, points, m : int | np.ndarray=-1) -> tuple[np.ndarray, np.ndarray | None]:
@@ -900,7 +921,7 @@ class LensErrors():
         return kinoform.profile, errs
     
     @staticmethod
-    def kinoform_height_shrink(kinoform: Kinoform, height: float | np.ndarray, proportion=False) -> tuple[np.ndarray, np.ndarray | None]:
+    def kinoform_height_shrink(kinoform: Kinoform, height: float | np.ndarray, proportion=True) -> tuple[np.ndarray, np.ndarray | None]:
 
         '''
         Shrink each zone's peak height to a user-specified value while keeping
