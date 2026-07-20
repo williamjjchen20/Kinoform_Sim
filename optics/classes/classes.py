@@ -35,7 +35,9 @@ class SimulationObject:
         self.n = n
         
         ## Add in objects (sources, apertures, lenses)
+        self.propagator = None
         self.objects = dict()
+        self.zs = []
         
     def __repr__(self):
         if self.dim == 1: # 2D box
@@ -69,7 +71,6 @@ class SimulationObject:
             print("No collisions detected. Proceeding...")
             return
         
-            
     def add_object(self, object):
         # Create check for object collisions
         match object:
@@ -86,6 +87,10 @@ class SimulationObject:
                 self.objects["aperture"] = apertures
             case _:
                 raise Exception("Unknown Object")
+        self.zs.append(object.z)
+        
+    def add_propagator(self, propagator):
+        self.propagator = propagator
         
     def copy(self, dim=None):
         if dim is None: dim = self.dim
@@ -110,6 +115,7 @@ class Propagator():
         self.dim=simulation.dim
         self.propagator = functools.partial(propagation_func, **kwargs)
         self.validated=False
+        simulation.add_propagator(self)
 
     @abstractmethod
     def _conditions(self):
@@ -121,7 +127,6 @@ class Object():
         self.kwargs = kwargs
         self.simulation = simulation
         self.dim = simulation.dim
-        simulation.add_object(self)
         # intialize physical properties
         self.z = z
         self.center = np.zeros(simulation.dim+1)
@@ -132,6 +137,8 @@ class Object():
         self._build_grid()
         # self.field = None
         self._build_field(**kwargs)
+        
+        simulation.add_object(self)
         
     def _build_grid(self):
         sim = self.simulation
@@ -346,7 +353,7 @@ class Waveform(Object):
         if dz+self.z > self.simulation.Lz: 
             print(f"Propagation must stay within box length {self.simulation.Lz}")
             diff = dz+self.z - self.simulation.Lz
-            dz = diff
+            dz = np.round(diff,10)
             print(f"Propagating for {dz}.")
         propagation_func = propagator.propagator
 
