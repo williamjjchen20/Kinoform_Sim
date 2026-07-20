@@ -44,8 +44,31 @@ class SimulationObject:
             return(f"Simulation box centered at {self.center} with dimensions {self.Lx} m x {self.Ly} m x {self.Lz} m")
         
     ## Setting up and using the simulation         
-    def __check_collisions(self):
-        pass
+    def check_collisions(self):
+        objects = self.objects
+        source = objects.get("source", None)
+        if source is None: raise Exception("No source defined.")
+        
+        lens_locations = np.array([lens.z for lens in objects.get("lens", [])])
+        aperture_locations = np.array([aperture.z for aperture in objects.get("aperture", [])])
+        
+        concat = np.concatenate([lens_locations, aperture_locations])
+        unique, counts = np.unique(np.sort(concat), return_counts=True)
+        
+        # check for aperture position collisions
+        if len(concat) > len(unique):
+            repeated = unique[counts > 1]
+            raise Exception(f"Collision Detected at z={repeated}")
+        # check for invalid propagation distances
+        if np.all(unique[1:]-unique[:-1] < 10*source.wavelength):
+            raise Exception("Objects are located too close for precision.")
+        # Source position
+        if np.any(source.z >= unique):
+            raise Exception("Source should be leftmost object.")
+        else:
+            print("No collisions detected. Proceeding...")
+            return
+        
             
     def add_object(self, object):
         # Create check for object collisions
@@ -54,9 +77,13 @@ class SimulationObject:
                 # if len(self.objects["sources"]) == 1: raise Exception("Only one source")
                 self.objects["source"] = object
             case ThinLens():
-                self.objects["lens"] = object
+                lenses = self.objects.get("lens", [])
+                lenses.append(object)
+                self.objects["lens"] = lenses
             case Aperture():
-                self.objects["aperture"] = object
+                apertures = self.objects.get("aperture", [])
+                apertures.append(object)
+                self.objects["aperture"] = apertures
             case _:
                 raise Exception("Unknown Object")
         
