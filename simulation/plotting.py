@@ -53,7 +53,7 @@ def simulation_sideview(simulation: SimulationObject, z_max, dz):
     return view
 
 def visualize_error(lens, errors, ax=None, show=False, labels={},
-                    R_min=None, R_max=None):
+                    R_min=None, R_max=None, savepath=None):
     '''
     Apply one or more errors to `lens` and plot the perturbed profile with the
     pristine (pre-error) profile overlaid as a faint dashed line.
@@ -85,8 +85,9 @@ def visualize_error(lens, errors, ax=None, show=False, labels={},
 
     original = _slice(lens.profile).copy()
 
-    for error_func, kwargs in errors:
-        lens.add_error(error_func, **(kwargs or {}))
+    if errors is not None:
+        for error_func, kwargs in errors:
+            lens.add_error(error_func, **(kwargs or {}))
 
     perturbed = _slice(lens.profile)
 
@@ -108,14 +109,14 @@ def visualize_error(lens, errors, ax=None, show=False, labels={},
 
     ax.fill_between(x[mask]*x_scale_factor, 0, perturbed[mask]*y_scale_factor, color="steelblue", alpha=0.5)
     # ax.plot(x[mask], perturbed[mask], color="navy", lw=1, alpha=0.8, label="with error")
-    ax.plot(x[mask]*x_scale_factor, original[mask]*y_scale_factor, color="black", lw=1.3,
-            alpha=0.8, label="original")
+    ax.plot(x[mask]*x_scale_factor, original[mask]*y_scale_factor, color="black", lw=0.8,
+            alpha=0.5, label="ideal")
     ax.axhline(0, color="black", lw=0.5)
 
     if show:
         err_names = ", ".join(getattr(ef, "__name__", str(ef)) for ef, _ in errors)
         ax.set(xlabel=xlabel, ylabel=ylabel,
-            title=title or f"{type(lens).__name__} profile with error(s): {err_names}")
+            title=title)
         ax.legend(loc="best", fontsize=8)
     else:
         ax.set_xticks([])
@@ -124,9 +125,10 @@ def visualize_error(lens, errors, ax=None, show=False, labels={},
         ax.set_yticklabels([])
         
     ax.set_xlim(R_min*x_scale_factor, R_max*x_scale_factor)
-    # if savepath is not None:
-    fig.savefig(savedir / f"{type(lens).__name__}_error_profile.png")
-    print(f"Saved error-visualization figure to {savedir}.")
+    ax.set_ylim((0, None)) #type: ignore
+    if savepath is not None:
+        fig.savefig(savepath)
+        print(f"Saved error-visualization figure to {savedir}.")
 
     return ax
 
