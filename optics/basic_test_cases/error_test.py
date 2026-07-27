@@ -41,10 +41,11 @@ def test_noop():
     
     
 
-def test_kinoform_etch(err):
+def test_kinoform_etch():
     print("Testing Kinoform with systematic etch error (1D)...")
     Lx, Lz = 1.5e-4, 10000
     N = 10000
+    err = 5e-8
 
     E = 8.e3
     f = 1.0
@@ -75,10 +76,11 @@ def test_kinoform_etch(err):
     print(f"Saved etched kinoform profile to {out}.")
 
 
-def test_kinoform_random_etch(max_err):
+def test_kinoform_random_etch():
     print("Testing Kinoform with random etch error (1D)...")
     Lx, Lz = 1.5e-4, 10000
     N = 10000
+    max_err = 5e-8
 
     E = 8.e3
     f = 1.0
@@ -108,7 +110,7 @@ def test_kinoform_random_etch(max_err):
     plt.close(fig)
     print(f"Saved etched kinoform profile to {out}.")
     
-def test_zone_removal(err):
+def test_zone_removal():
     print("Testing Kinoform with zone removal (1D)...")
     Lx, Lz = 1.5e-4, 10000
     N = 10000
@@ -147,10 +149,12 @@ def test_zone_removal(err):
     plt.close(fig)
     print(f"Saved etched kinoform profile to {out}.")
     
-def test_gaussian_etch(max_err, invert=False):
+def test_gaussian_etch():
     print("Testing Kinoform with Gaussian-distributed etch error (1D)...")
     Lx, Lz = 1.5e-4, 10000
     N = 10000
+    max_err = 5e-8
+    invert = False
 
     E = 8.e3
     f = 1.0
@@ -180,7 +184,7 @@ def test_gaussian_etch(max_err, invert=False):
     plt.close(fig)
     print(f"Saved etched kinoform profile to {out}.")
     
-def test_zone_shift(max_err):
+def test_zone_shift():
     print("Testing Kinoform with zone placement error (1D)...")
     Lx, Lz = 1.5e-4, 10000
     N = 10000
@@ -217,7 +221,7 @@ def test_zone_shift(max_err):
     plt.close(fig)
     print(f"Saved kinoform profile to {out}.")
     
-def test_taper(max_err):
+def test_taper():
     print("Testing Kinoform with taper (1D)...")
     Lx, Lz = 1.5e-4, 10000
     N = 10000
@@ -469,17 +473,15 @@ def test_FZP_error():
     print(f"Saved FZP profile to {out}.")
     
 if __name__ == "__main__":
-    max_err = 5e-8
-    # test_noop()
-    # test_kinoform_etch(max_err)
-    # test_kinoform_random_etch(max_err)
-    # test_gaussian_etch(max_err)
-    # test_gaussian_etch(max_err, invert=True)
-    # test_zone_removal(1e-6)
-    # test_zone_shift(1e-6)
-    # test_taper(1e-6)
-    # test_zone_quantization()
-    # test_zone_warping()
+    test_noop()
+    test_kinoform_etch()
+    test_kinoform_random_etch()
+    test_gaussian_etch()
+    test_zone_removal()
+    test_zone_shift()
+    test_taper()
+    test_zone_quantization()
+    test_zone_warping()
     test_multierror()
-    # test_reference()
-    # test_FZP_error()
+    test_reference()
+    test_FZP_error()
