@@ -108,14 +108,14 @@ def plot_comparison_1D(results, savepath, mark_fwhm=False):
     n_lenses = len(results)
     if n_lenses == 0: raise Exception("No lenses added.")
 
-    figw, figh_per_row = 10, 3.0
+    figw, figh_per_row = 8, 2.0
     fig, ax = plt.subplots(
-        nrows=n_lenses, ncols=3,
+        nrows=n_lenses, ncols=2,
         figsize=(figw, figh_per_row * n_lenses),
         squeeze=False,
         constrained_layout=True,
     )
-    title_fs = max(6, min(figw, figh_per_row) * 1.2)
+    # title_fs = min(figw, figh_per_row) * 7.5#max(6, min(figw, figh_per_row) * 1.2)
 
     cmap_cycle = plt.get_cmap("tab10")
 
@@ -127,35 +127,46 @@ def plot_comparison_1D(results, savepath, mark_fwhm=False):
         except:
             R_min = -lens.R
             
-        lens.plot_profile(ax=ax[i, 0], labels=labels, R_min = R_min)
+        if i != n_lenses-1: 
+            labels["xlabel"] = None
+            
+        text_scale = 1.2
+            
+        lens_axis =  ax[i, 0]
+        lens.plot_profile(ax=lens_axis, labels=labels, R_min = R_min)
+        title_fs = lens_axis.title.get_fontsize() * text_scale
         ax[i, 0].title.set_fontsize(title_fs)
 
         ## Lens phase plot
+        phase_axis = ax[i, 1]
         lens_labels = dict(labels)
         lens_labels["xlim"] = (-lens.R/4, lens.R/4)
         lens_labels["ylim"] = None
         lens_labels["y_scale_factor"] = 1.
-        lens_ax = lens.view(ax=ax[i, 1], labels=lens_labels, color=cmap_cycle(i%10))
+        lens_ax = lens.view(ax=phase_axis, labels=lens_labels, color=cmap_cycle(i%10))
         lens_ax.set(title=f"{name} Lens Phase")
         lens_ax.title.set_fontsize(title_fs)
 
         ## Wave intensity full view
+        wave_axis = ax[i, 1]
         wave_labels = dict(labels)
         wave_labels["xlim"] = None
         wave_labels["y_scale_factor"] = 1.
-        wave_ax = wave.view(ax=ax[i, 2], labels=wave_labels, color=cmap_cycle(i%10))
-        wave_ax.set(title=f"{name} Focal Intensity")
+        wave_labels["title"] = "Focal Intensity"
+        wave_ax = wave.view(ax=wave_axis, labels=wave_labels, color=cmap_cycle(i%10))
+        # wave_ax.set(title=f"{name} Focal Intensity")
+        title_fs = wave_axis.title.get_fontsize() * text_scale
         wave_ax.title.set_fontsize(title_fs)
 
         if mark_fwhm:
             fwhm = labels.get("fwhm")
             x_scale_factor = labels.get("x_scale_factor", 1.0)
             if fwhm is not None:
-                ax[i, 2].axhline(0.5, color="gray", lw=0.8, ls="--")
-                ax[i, 2].axvspan(-fwhm/2 * x_scale_factor, fwhm/2 * x_scale_factor,
+                wave_axis.axhline(0.5, color="gray", lw=0.8, ls="--")
+                wave_axis.axvspan(-fwhm/2 * x_scale_factor, fwhm/2 * x_scale_factor,
                                  color="crimson", alpha=0.15,
                                  label=f"FWHM={fwhm:.2e} m")
-                ax[i, 2].legend(fontsize=8)
+                wave_axis.legend(fontsize=8)
 
     fig.savefig(savepath)
     plt.close(fig)
@@ -178,7 +189,7 @@ def plot_comparison_2D(results, savepath, extend=False, mark_fwhm=False):
         squeeze=False,
         constrained_layout=True,
     )
-    title_fs = max(6, min(figw / 4, figh_per_row) * 1.2)
+    title_fs = max(6, min(figw / 4, figh_per_row) * 3)
 
     cmap_cycle = plt.get_cmap("tab10")
 
@@ -252,6 +263,9 @@ def test_compare_xray_lenses(lens_dict, N, dim, extend=False, mark_fwhm=False):
     E = 8e3        # eV
     f = 0.1        # m
     R = 1e-4       # m
+    f = 1.0        # m
+    R = 5e-5       # m
+    
     n = xrl.Refractive_Index("Si", E / 1000, 2.329)
     
     print(f"Refractive index n = {n}")
@@ -310,7 +324,7 @@ def test_compare_xray_lenses(lens_dict, N, dim, extend=False, mark_fwhm=False):
             "yscale": "linear",
             "y_scale_factor": 1e6,
             "zones": display_zones,
-            "title": rf"{name} profile (E={E/1000} keV, f={lens.f:.3g} m, R={lens.R *1e6:.3g} $\mu m$)",
+            "title": rf"{name}", #(E={E/1000} keV, f={lens.f:.3g} m, R={lens.R *1e6:.3g} $\mu m$)",
             "fwhm": m.get("fwhm"),
         }
         
