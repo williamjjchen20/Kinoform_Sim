@@ -38,8 +38,6 @@ def test_noop():
                     simulation=simulation, z=0)
 
     print("Zones:", lens.zones)
-    
-    
 
 def test_kinoform_etch():
     print("Testing Kinoform with systematic etch error (1D)...")
@@ -57,7 +55,8 @@ def test_kinoform_etch():
     source = ConstantBeam(energy=E, simulation=simulation, z=0)
     lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n,
                     simulation=simulation, z=0)
-
+    
+    print("Zones:", lens.zones)
     lens.add_error(LensErrors.periodic_etch, err=err, interval=N//1000)
 
     fig, ax = plt.subplots(figsize=(8, 4))
@@ -93,6 +92,7 @@ def test_kinoform_random_etch():
     lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n,
                     simulation=simulation, z=0)
 
+    print("Zones:", lens.zones)
     lens.add_error(LensErrors.random_etch, max_err=max_err, interval=N//1000, distribution_func="gaussian", seed=67)
 
     fig, ax = plt.subplots(figsize=(8, 4))
@@ -114,6 +114,7 @@ def test_zone_removal():
     print("Testing Kinoform with zone removal (1D)...")
     Lx, Lz = 1.5e-4, 10000
     N = 10000
+    err = 1e-7
 
     E = 8.e3
     f = 1.0
@@ -127,12 +128,11 @@ def test_zone_removal():
                     simulation=simulation, z=0)
 
     print("Zones:", lens.zones)
-    n = lens.zones
-    print(lens.zone_left, lens.zone_right, sep="\n")
-    
+    print("Zone Locations:", lens.zone_left, lens.zone_right, sep="\n")
     lens.add_error(LensErrors.zone_removal, err=1e-7, m=0, direction="in", extend=True, remove_last=False, mutable=True)
     
-    print(lens.zone_left, lens.zone_right, sep="\n")
+    print("Updated Zones:", lens.zones)
+    print("Updated Zone Locations:", lens.zone_left, lens.zone_right, sep="\n")
     
     fig, ax = plt.subplots(figsize=(8, 4))
     x = lens.grid
@@ -166,7 +166,8 @@ def test_gaussian_etch():
     source = ConstantBeam(energy=E, simulation=simulation, z=0)
     lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n,
                     simulation=simulation, z=0)
-
+    
+    print("Zones:", lens.zones)
     lens.add_error(LensErrors.gaussian_etch, max_err=max_err, invert=invert, seed=67)
 
     fig, ax = plt.subplots(figsize=(8, 4))
@@ -188,6 +189,7 @@ def test_zone_shift():
     print("Testing Kinoform with zone placement error (1D)...")
     Lx, Lz = 1.5e-4, 10000
     N = 10000
+    max_err = 1e-7
 
     E = 8.e3
     f = 1.0
@@ -200,11 +202,12 @@ def test_zone_shift():
     lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n,
                     simulation=simulation, z=0)
     
-    print(lens.zone_left, lens.zone_right, sep="\n")
-
-    lens.add_error(LensErrors.zone_shift, err=1e-7)
+    print("Zones:", lens.zones)
+    print("Zone Locations:", lens.zone_left, lens.zone_right, sep="\n")
+    lens.add_error(LensErrors.zone_shift, err=max_err)
     
-    print(lens.zone_left, lens.zone_right, sep="\n")
+    print("Updated Zones:", lens.zones)
+    print("Updated Zone Locations:", lens.zone_left, lens.zone_right, sep="\n")
     
     fig, ax = plt.subplots(figsize=(8, 4))
     x = lens.grid
@@ -225,6 +228,7 @@ def test_taper():
     print("Testing Kinoform with taper (1D)...")
     Lx, Lz = 1.5e-4, 10000
     N = 10000
+    err=1e-6
 
     E = 8.e3
     f = 1.0
@@ -237,11 +241,13 @@ def test_taper():
     lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n,
                     simulation=simulation, z=0)
     
-    print(lens.zone_right)
     
-    lens.add_error(LensErrors.kinoform_sidewall_taper, err=1e-6, proportion=1., zone_shift=False)
+    print("Zones:", lens.zones)
+    print("Zone Locations:", lens.zone_left, lens.zone_right, sep="\n")
+    lens.add_error(LensErrors.kinoform_sidewall_taper, err=err, proportion=1., zone_shift=False)
     # print(lens.R)
-    print(lens.zone_right)
+    print("Updated Zones:", lens.zones)
+    print("Updated Zone Locations:", lens.zone_left, lens.zone_right, sep="\n")
     
     fig, ax = plt.subplots(figsize=(8, 4))
     x = lens.grid
@@ -250,7 +256,7 @@ def test_taper():
     ax.plot(x[mask], lens.profile[mask], color="navy", lw=1)
     ax.axhline(0, color="black", lw=0.5)
     ax.set(xlabel="x [m]", ylabel="thickness [m]",
-           title=f"Tapered Kinoform profile (max_err={max_err:.1e} m)")
+           title=f"Tapered Kinoform profile (err={err:.1e} m)")
     ax.set_xlim(-lens.R, lens.R)
 
     out = savedir / f"Kinoform_taper_profile.png"
@@ -283,6 +289,9 @@ def test_zone_quantization():
         r_l, r_r = zone_locations[mi], zone_locations[mi + 1]
         points.append([(r_l, 0), (r_l + (r_r - r_l) / 4, h / 3), (r_l + 3 * (r_r - r_l) / 4, 2 * h / 3), (r_r, h)])
     points = np.array(points)
+    
+    print("Zones:", lens.zones)
+    print("Zone Locations:", lens.zone_left, lens.zone_right, sep="\n")
 
     lens.add_error(LensErrors.zone_quantization, points=points, m=ms)
 
@@ -320,6 +329,8 @@ def test_zone_warping():
     beam_width = 1.5e-6
     
     print(lens.zone_widths[-1], beam_width/lens.zone_widths[-1])
+    print("Zones:", lens.zones)
+    print("Zone Locations:", lens.zone_left, lens.zone_right, sep="\n")
     # lens.add_error(LensErrors.kinoform_sidewall_taper, err=1e-8, proportion=0.3)
     lens.add_error(LensErrors.kinoform_zone_warping, R_min=0, R_max=R, beam_width=beam_width)
     lens.add_error(LensErrors.cap_floor, h=0.02, proportion=True)
@@ -357,18 +368,15 @@ def test_multierror():
     lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n,
                     simulation=simulation, z=0, full=True)
     
-    print(lens.R)
-    
     beam_width = 3e-7
 
     print("Kinoform Height:", lens.height)
     print(lens.zone_widths[-1])
-    # lens.add_error(LensErrors.zone_shift, err=1e-7)
-    # lens.add_error(LensErrors.kinoform_zone_warping, R_min=0, R_max=lens.R, beam_width=beam_width)
+    lens.add_error(LensErrors.zone_shift, err=1e-7)
+    lens.add_error(LensErrors.kinoform_zone_warping, R_min=0, R_max=lens.R, beam_width=beam_width)
     lens.add_error(LensErrors.kinoform_sidewall_taper, err=1e-7,proportion=1.)
-    # lens.add_error(LensErrors.cap_floor, h=0.01, proportion=True)
-    # lens.add_error(LensErrors.cap_height, h=0.98, proportion=True)
-    print(lens.zone_locations[-1], lens.R)
+    lens.add_error(LensErrors.cap_floor, h=0.01, proportion=True)
+    lens.add_error(LensErrors.cap_height, h=0.98, proportion=True)
     
     print("Outer Zone Width:", lens.zone_widths[-1])
     

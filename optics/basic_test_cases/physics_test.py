@@ -84,5 +84,4 @@ def test_power_conservation_kinoform():
 
 if __name__ == "__main__":
     test_power_conservation_freespace()
-    print()
     test_power_conservation_kinoform()

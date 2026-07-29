@@ -285,4 +285,4 @@ def test_FWHM():
 
 if __name__ == "__main__":
     test_FWHM()
-    # test_compare_xray_lenses()
+    test_compare_xray_lenses()
