@@ -1,6 +1,6 @@
 import numpy as np
 import scipy.constants as const
-import scipy.special as f
+import scipy.special as special
 
 from .classes import Aperture, SimulationObject
 
@@ -37,7 +37,7 @@ class DiffractionPatterns():
         arg = k*radius*r/z
 
         U0 = np.exp(1j*k*z)*np.exp(1j*k*r**2/(2*z))/(1j*wavelength*z)*A
-        U = U0*(2*f.jv(1, arg)/(arg))
+        U = U0*(2*special.jv(1, arg)/(arg))
         return U
     
 class ApertureFunctions():
