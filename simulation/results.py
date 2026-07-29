@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 import xraylib as xrl
-from ..optics import classes
+from ..optics import *
 from .plotting import *
 
 script_dir = Path(__file__).resolve().parent
@@ -29,8 +29,8 @@ def build_errors(lens_type, height):
         return [(LensErrors.kinoform_height_shrink, {"height": height, "proportion": False}),
                 (LensErrors.kinoform_zone_shrink, {"err": 5e-9}),
                 (LensErrors.kinoform_sidewall_taper, {"err":1e-8, "proportion":1., "zone_shift":False}),
-                (LensErrors.cap_height, {"h": 0.99*height, "proportion": False}),
-                (LensErrors.cap_floor, {"h": 0.02, "proportion": True}),
+                (LensErrors.cap_height, {"h": 0.97*height, "proportion": False}),
+                (LensErrors.cap_floor, {"h": 0.002, "proportion": True}),
                 (LensErrors.random_etch, {"max_err": 5e-9, "interval": 2, "distribution": "gaussian", "seed": seed})]
     else:
         return [(LensErrors.FZP_sidewall_taper, {"err": 1e-8, "proportion": 1.0}),
@@ -95,14 +95,13 @@ def sideview_plot():
     print(f"Saved side-view to {out}")
     
     
-def plot_aberrated_intensity(lens_types: type[Kinoform] | type[FZP] | list[type[Kinoform] | type[FZP]],
-               heights: float | list[float]):
+def plot_aberrated_intensity(lens_types: type[Kinoform] | type[FZP] | list[type[Kinoform] | type[FZP]]):
     from ..optics.metrics.lens_comparison import collect_metrics, print_comparison
 
-    if not isinstance(lens_types, list):
-        lens_types = [lens_types]
-    if not isinstance(heights, list):
-        heights = [heights] * len(lens_types) # type:ignore
+    # if not isinstance(lens_types, list):
+    #     lens_types = [lens_types]
+    # if not isinstance(heights, list):
+    #     heights = [heights] * len(lens_types) # type:ignore
 
     Lx, Lz = 3e-4, 10000
     N = 200000
@@ -111,14 +110,13 @@ def plot_aberrated_intensity(lens_types: type[Kinoform] | type[FZP] | list[type[
     f = 0.1
     R = 1e-4
     n = xrl.Refractive_Index("Si", E / 1000, 2.329)
-
-
+    
+    aspect_ratios = [25, 50]
     metrics_list = []
     focal_waves  = []
 
-    for lens_type, height in zip(lens_types, heights): # type:ignore
-        err = build_errors(lens_type, height)
-        label = f"Aberrated {lens_type.__name__}"
+    for lens_type, aspect_ratio in zip(lens_types, aspect_ratios): # type:ignore
+        label = f"Manufactured {lens_type.__name__}"
 
         simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz)
         propagator = AngularSpectrum(simulation)
@@ -128,13 +126,21 @@ def plot_aberrated_intensity(lens_types: type[Kinoform] | type[FZP] | list[type[
             lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n,
                         simulation=simulation, z=0)
         else:
-            lens = FZP(wavelength=source.wavelength, f=f, R=R, n=n,
-                simulation=simulation, z=0)
+            lens = FZP(wavelength=source.wavelength, f=f,
+                       R=R, n=n, simulation=simulation, z=0)
+            
+        height = aspect_ratio*lens.zone_widths[-1]
 
+        err = build_errors(lens_type, height)
+        lens_error_profile(lens_type, err, 
+                           title=f"Manufactured {lens_type.__name__} Profile (Aspect Ratio {aspect_ratio}:1)",
+                           savepath=savedir / f"{lens_type.__name__}_manufactured_profile.png", 
+                           show=True)
         for error_func, kwargs in err:
             lens.add_error(error_func, **kwargs)
 
         h, outer_width = lens.zone_heights[-1], lens.zone_widths[-1]
+        print(f"[{lens_type.__name__}] Outer zone height: {h}")
         print(f"[{lens_type.__name__}] Outer zone width: {outer_width}")
         print(f"[{lens_type.__name__}] Outer zone aspect ratio: {h/outer_width}")
 
@@ -194,8 +200,8 @@ def lens_profile_plot():
     plot_full_lens_profile(lens)
     
     
-def lens_error_profile(lens_type: type[Kinoform] | type[FZP], err=None, ax=None,
-                       lf=None, lR=None, title=None, show=False, savepath=None):
+def lens_error_profile(lens_type: type[Kinoform] | type[FZP] | type[XrayParabolicLens], err=None, ax=None, 
+                       lf=None, lR=None, r_limit=False, title=None, show=False, savepath=None):
 
     _lf = lf if lf is not None else f
     _lR = lR if lR is not None else R
@@ -203,30 +209,42 @@ def lens_error_profile(lens_type: type[Kinoform] | type[FZP], err=None, ax=None,
     simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz)
 
     source = ConstantBeam(energy=E, simulation=simulation, z=0)
-    if lens_type is Kinoform:
-        lens = Kinoform(wavelength=source.wavelength, f=_lf, R=_lR, n=n,
-                        simulation=simulation, z=0)
-    else:
-        lens = FZP(wavelength=source.wavelength, f=_lf, R=_lR, n=n,
-                   simulation=simulation, z=0)
-
-    height, outer_width = lens.height, lens.zone_widths[-1]
-    print("Outer zone width:", outer_width)
-    print("Outer zone aspect ratio:", height/outer_width)
-
+    
     labels = {
-        "xlabel": r"x [$\mu$m]",
-        "ylabel": r"thickness [$\mu$m]",
-        "x_scale_factor": 1e6,
-        "y_scale_factor": 1e6,
-        "title": title
-    }
-    locations = lens.zone_locations
-    ax = visualize_error(lens, err, ax=ax, R_min=locations[-5], labels=labels, show=show, savepath=savepath)
+                "xlabel": r"x [$\mu$m]",
+                "ylabel": r"thickness [$\mu$m]",
+                "x_scale_factor": 1e6,
+                "y_scale_factor": 1e6,
+                "title": title
+            }
+    
+    if lens_type is XrayParabolicLens:
+        lens = XrayParabolicLens(f=_lf, R=_lR, n=n,
+                            simulation=simulation, z=0)
+        
+        ax = visualize_error(lens, err, ax=ax, labels=labels, show=show, savepath=savepath)
+        
+    else:
+        if lens_type is Kinoform:
+            lens = Kinoform(wavelength=source.wavelength, f=_lf, R=_lR, n=n,
+                            simulation=simulation, z=0)
+        elif lens_type is FZP:
+            lens = FZP(wavelength=source.wavelength, f=_lf, R=_lR, n=n,
+                    simulation=simulation, z=0)
+        else:
+            raise Exception("Invalid lens type!")
 
-    height, outer_width = lens.zone_heights[-1], lens.zone_widths[-1]
-    print("Outer zone width:", outer_width)
-    print("Outer zone aspect ratio:", height/outer_width)
+        height, outer_width = lens.height, lens.zone_widths[-1]
+        print("Outer zone width:", outer_width)
+        print("Outer zone aspect ratio:", height/outer_width)
+
+        locations = lens.zone_locations
+        r_min = locations[-5] if r_limit else None
+        ax = visualize_error(lens, err, ax=ax, R_min=r_min, labels=labels, show=show, savepath=savepath)
+
+        height, outer_width = lens.zone_heights[-1], lens.zone_widths[-1]
+        print("Outer zone width:", outer_width)
+        print("Outer zone aspect ratio:", height/outer_width)
 
     return ax
     
@@ -488,211 +506,41 @@ def plot_error_sweep(sweep_name: str, error_func, sweep_param: str,
     fig.savefig(out)
     plt.close(fig)
     print(f"Saved error metrics plot to {out}")
-    
-    
-    
-# def lens_error_plot(sweep_name: str, error_func, sweep_param: str,
-#                     err_values, error_kwargs: dict | None = None,
-#                     xlabel: str = "Error", x_scale_factor: float = 1.0,
-#                     xscale: str = "linear", invert_x: bool = False,
-#                     n_slices: int = 8):
-#     '''
-#     Combined figure: intensity slices (top row, one panel per lens config) and
-#     error-metric sweeps — focal efficiency (bottom-left) and per-config FWHM
-#     (bottom-right, stacked) — all sharing the same sweep data so simulations
-#     are only run once.
-#     '''
-#     from ..optics.metrics.metrics import focal_efficiency, FWHM, total_power
-#     from ..optics.metrics.error_metrics import _bind_metric, _safe_call
-
-#     Lx, Lz = 3e-4, 10000
-#     N = 100000
-#     E, f, R = 8.e3, 0.1, 1e-4
-#     n = xrl.Refractive_Index("Si", E / 1000, 2.329)
-#     error_kwargs = dict(error_kwargs or {})
-#     err_values = np.asarray(list(err_values), dtype=float)
-
-#     lens_configs = [
-#         (Kinoform, {"f": 1.0, "R": 5e-5}, "Low-Resolution",  "tab:orange"),
-#         (Kinoform, {"f": 0.1, "R": 1e-4}, "High-Resolution", "tab:blue"),
-#     ]
-#     n_configs = len(lens_configs)
-
-#     slice_indices = np.unique(
-#         np.round(np.linspace(0, len(err_values) - 1, n_slices)).astype(int)
-#     )
-#     cmap = plt.get_cmap("plasma")
-#     scaled_slice = err_values[slice_indices] * x_scale_factor
-#     norm_c = plt.Normalize(vmin=scaled_slice.min(), vmax=scaled_slice.max())
-
-#     err_plot = err_values * x_scale_factor
-
-#     n_bottom = 1 + n_configs
-#     fig = plt.figure(figsize=(5 * n_bottom, 4 + 3), constrained_layout=True)
-#     gs = fig.add_gridspec(2, n_bottom,
-#                           height_ratios=[4, 3])
-
-#     slice_axes = [fig.add_subplot(gs[0, c]) for c in range(n_configs)]
-#     if n_configs < n_bottom:
-#         for c in range(n_configs, n_bottom):
-#             fig.add_subplot(gs[0, c]).set_visible(False)
-
-#     ax_eff = fig.add_subplot(gs[1, 0])
-#     fwhm_axes = [fig.add_subplot(gs[1, 1 + c]) for c in range(n_configs)]
-#     for c in range(1, n_configs):
-#         fwhm_axes[c].sharey(fwhm_axes[0])
-
-#     eff_data  = {}
-#     fwhm_data = {}
-#     ref_eff   = {}
-#     ref_fwhm  = {}
-
-#     for col, (lens_cls, params, name, cfg_color) in enumerate(lens_configs):
-#         lf = params.get("f", f)
-#         lR = params.get("R", R)
-#         ax_sl = slice_axes[col]
-
-#         sim_ref = SimulationObject(Lx=Lx, Nx=N, Lz=Lz)
-#         src_ref = ConstantBeam(energy=E, simulation=sim_ref, z=0)
-#         lens_ref = lens_cls(wavelength=src_ref.wavelength, f=lf, R=lR,
-#                             n=n, simulation=sim_ref, z=0)
-#         src_ref.filter(lens_ref)
-#         P_in_ref = total_power(src_ref)
-#         lens_ref.init_transmittance(src_ref)
-#         lens_ref.transform(src_ref)
-#         src_ref.propagate(lens_ref.f, AngularSpectrum(sim_ref))
-
-#         radius_ref = 1.22 * src_ref.wavelength * lens_ref.f / (2 * lens_ref.R)
-#         ref_eff[name]  = _safe_call(
-#             _bind_metric(focal_efficiency, ref_source=src_ref,
-#                          P_in=P_in_ref, radius=radius_ref), src_ref)
-#         ref_fwhm[name] = _safe_call(FWHM, src_ref)
-#         print(f"[{name}] ref eff={ref_eff[name]:.3e}  ref FWHM={ref_fwhm[name]:.3e}")
-
-#         x_ref = np.asarray(src_ref.grid)
-#         I_ref = np.asarray(src_ref.intensity())
-#         ax_sl.plot(x_ref * 1e9, I_ref / I_ref.max(), color="black",
-#                    lw=1.6, ls="--", label="Reference", zorder=10)
-#         if np.isfinite(ref_fwhm[name]):
-#             ax_sl.axvspan(-ref_fwhm[name] / 2 * 1e9, ref_fwhm[name] / 2 * 1e9,
-#                           color="black", alpha=0.07, zorder=0)
-
-#         scale = ref_fwhm[name] if np.isfinite(ref_fwhm[name]) else lR
-
-#         effs  = np.zeros(len(err_values))
-#         fwhms = np.zeros(len(err_values))
-
-#         for i, e in enumerate(err_values):
-#             sim = SimulationObject(Lx=Lx, Nx=N, Lz=Lz)
-#             src = ConstantBeam(energy=E, simulation=sim, z=0)
-#             lens = lens_cls(wavelength=src.wavelength, f=lf, R=lR,
-#                             n=n, simulation=sim, z=0)
-#             src.filter(lens)
-#             P_in = total_power(src)
-#             lens.add_error(error_func, **{sweep_param: float(e)}, **error_kwargs)
-#             lens.init_transmittance(src)
-#             lens.transform(src)
-#             src.propagate(lens.f, AngularSpectrum(sim))
-
-#             radius = 1.22 * src.wavelength * lens.f / (2 * lens.R)
-#             effs[i]  = _safe_call(
-#                 _bind_metric(focal_efficiency, ref_source=src_ref,
-#                              P_in=P_in, radius=radius), src)
-#             fwhms[i] = _safe_call(FWHM, src)
-
-#             if i in slice_indices:
-#                 color = cmap(norm_c(e * x_scale_factor))
-#                 x = np.asarray(src.grid)
-#                 I = np.asarray(src.intensity())
-#                 I_norm = I / I_ref.max()
-#                 ax_sl.plot(x * 1e9, I_norm, color=color, lw=1.1,
-#                            label=f"{e * x_scale_factor:.3g}", alpha=0.85)
-#                 if np.isfinite(fwhms[i]):
-#                     ax_sl.axhline(0.5 * I.max() / I_ref.max(), color=color,
-#                                   lw=0.7, ls=":", alpha=0.5)
-#                     ax_sl.axvspan(-fwhms[i] / 2 * 1e9, fwhms[i] / 2 * 1e9,
-#                                   color=color, alpha=0.08)
-
-#             print(f"  [{name}] [{i+1}/{len(err_values)}] {sweep_param}={e:.3e}"
-#                   f"  eff={effs[i]:.3e}  FWHM={fwhms[i]:.3e}")
-
-#         eff_data[name]  = effs
-#         fwhm_data[name] = fwhms
-
-#         xlim = 10 * scale * 1e9
-#         ax_sl.set(xlabel="x [nm]", ylabel="Normalised Intensity",
-#                   title=name, xlim=(-xlim, xlim))
-#         ax_sl.legend(fontsize=7, title=xlabel, title_fontsize=7,
-#                      loc="upper right", ncol=2)
-#         sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm_c)
-#         sm.set_array([])
-#         fig.colorbar(sm, ax=ax_sl, label=xlabel, fraction=0.046, pad=0.04)
-
-#     for (_, _, name, color), ax_f in zip(lens_configs, fwhm_axes):
-#         ax_eff.plot(err_plot, eff_data[name], color=color, label=name,
-#                     linewidth=1.8, zorder=2)
-#         if np.isfinite(ref_eff[name]):
-#             ax_eff.axhline(ref_eff[name], color=color, lw=0.9, ls="--", alpha=0.5)
-
-#         ax_f.plot(err_plot, fwhm_data[name] * 1e9, color=color, label=name,
-#                   linewidth=1.8, zorder=2)
-#         if np.isfinite(ref_fwhm[name]):
-#             ax_f.axhline(ref_fwhm[name] * 1e9, color=color, lw=0.9, ls="--", alpha=0.5)
-#         ymean = float(ref_fwhm[name]) * 1e9
-#         ax_f.set(ylabel="FWHM [nm]", xscale=xscale,
-#                  ylim=(0.5 * ymean, 1.5 * ymean), xlabel=xlabel)
-#         ax_f.xaxis.set_inverted(invert_x)
-#         ax_f.legend(fontsize=8)
-
-#     ax_eff.set(xlabel=xlabel, ylabel="Focal Efficiency", xscale=xscale)
-#     ax_eff.xaxis.set_inverted(invert_x)
-#     ax_eff.legend(fontsize=8)
-
-#     for ax_f in fwhm_axes[1:]:
-#         ax_f.xaxis.set_inverted(invert_x)
-
-#     fig.suptitle(rf"{sweep_name}: {' vs '.join(c[2] for c in lens_configs)} (E={E/1000} keV)")
-#     savedir.mkdir(parents=True, exist_ok=True)
-#     slug = sweep_name.lower().replace(" ", "_")
-#     out = savedir / f"lens_error_plot_{slug}.png"
-#     fig.savefig(out)
-#     plt.close(fig)
-#     print(f"Saved combined lens error plot to {out}")
-
 
 if __name__ == "__main__":
-    # lens_error_profile(Kinoform)
-    # plot_error_sweep(
-    #     "Manufacturing Height",
-    #     LensErrors.kinoform_height_shrink, "height",
-    #     err_values=np.linspace(1.0, 0.01, 50),
-    #     error_kwargs={"proportion": True},
-    #     xlabel="Height Proportion",
-    #     x_scale_factor=1.0,
-    #     invert_x=True,
-    #     show_profile=False
-    # )
+    lens_error_profile(XrayParabolicLens, lf=3.0, lR=5e-5, show=False, savepath=savedir/ "Ideal_parabolic.png")
+    lens_error_profile(FZP, show=False, savepath=savedir/ "Ideal_FZP.png")
+    lens_error_profile(Kinoform, lf=3.0, lR=5e-5, show=False, savepath=savedir/ "Ideal_kino.png")
+    plot_error_sweep(
+        "Manufacturing Height",
+        LensErrors.kinoform_height_shrink, "height",
+        err_values=np.linspace(1.0, 0.01, 50),
+        error_kwargs={"proportion": True},
+        xlabel="Height Proportion",
+        x_scale_factor=1.0,
+        invert_x=True,
+        show_profile=False
+    )
     
-    # plot_error_sweep(
-    #     "Roughness",
-    #     LensErrors.random_etch, "max_err",
-    #     err_values=np.linspace(1e-9, 5e-7, 50),
-    #     error_kwargs={"interval": 1, "seed": seed, "distribution": "gaussian"},
-    #     x_scale_factor=1e9,
-    #     xlabel=r"Maximum Etch Depth [nm]",
-    #     show_profile=False
-    # )
+    plot_error_sweep(
+        "Roughness",
+        LensErrors.random_etch, "max_err",
+        err_values=np.linspace(1e-9, 5e-7, 50),
+        error_kwargs={"interval": 1, "seed": seed, "distribution": "gaussian"},
+        x_scale_factor=1e9,
+        xlabel=r"Maximum Etch Depth [nm]",
+        show_profile=False
+    )
     
-    # plot_error_sweep(
-    #     "Sidewall Taper",
-    #     LensErrors.kinoform_sidewall_taper, "err",
-    #     err_values=np.linspace(0, 1e-7, 50),
-    #     error_kwargs={"proportion": 1.0},
-    #     xlabel=r"Taper [nm]",
-    #     x_scale_factor=1e9,
-    #     show_profile=False
-    # )
-    
+    plot_error_sweep(
+        "Sidewall Taper",
+        LensErrors.kinoform_sidewall_taper, "err",
+        err_values=np.linspace(0, 1e-7, 50),
+        error_kwargs={"proportion": 1.0},
+        xlabel=r"Taper [nm]",
+        x_scale_factor=1e9,
+        show_profile=False
+    )
     
     plot_error_sweep(
         "Zone Shrink",
@@ -704,12 +552,4 @@ if __name__ == "__main__":
         show_profile=False
     )
     
-    
-    # lens_error_plot(
-    #     "Sidewall Taper",
-    #     LensErrors.kinoform_sidewall_taper, "err",
-    #     err_values=np.linspace(0, 1e-7, 50),
-    #     error_kwargs={"proportion": 1.0},
-    #     xlabel=r"Taper [nm]",
-    #     x_scale_factor=1e9,
-    # )
+    plot_aberrated_intensity([Kinoform, FZP])
