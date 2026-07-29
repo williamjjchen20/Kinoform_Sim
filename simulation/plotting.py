@@ -96,7 +96,7 @@ def visualize_error(lens, errors, ax=None, show=False, labels={},
     mask = (x >= R_min) & (x <= R_max)
 
     if ax is None:
-        fig, ax = plt.subplots(figsize=(6, 2))
+        fig, ax = plt.subplots(figsize=(6, 4))
     else:
         fig = ax.get_figure()
         
@@ -114,7 +114,6 @@ def visualize_error(lens, errors, ax=None, show=False, labels={},
     ax.axhline(0, color="black", lw=0.5)
 
     if show:
-        err_names = ", ".join(getattr(ef, "__name__", str(ef)) for ef, _ in errors)
         ax.set(xlabel=xlabel, ylabel=ylabel,
             title=title)
         ax.legend(loc="best", fontsize=8)
