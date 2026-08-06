@@ -24,19 +24,64 @@ R = 1e-4
 n = xrl.Refractive_Index("Si", E / 1000, 2.329)
 
 seed = 42
+def build_errors_random(lens_type, height, sigma_fraction=0.1, rng_seed=seed):
+    rng = np.random.default_rng(rng_seed)
+
+    if lens_type is Kinoform:
+        simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz)
+        source = ConstantBeam(energy=E, simulation=simulation, z=0)
+        lens_tmp = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n,
+                            simulation=simulation, z=0)
+        n_zones = len(lens_tmp.zone_heights)
+        sigma = sigma_fraction * height
+        
+        per_zone_heights = np.clip(
+            rng.normal(loc=height, scale=sigma, size=n_zones),
+            0, lens_tmp.zone_heights
+        )
+        shrink_mag = 2e-8
+        per_zone_shrink = rng.normal(loc=shrink_mag, size=n_zones, scale=5*sigma_fraction*shrink_mag)
+        
+        taper_mag = 4e-8
+        per_zone_taper = rng.normal(loc=taper_mag, size=n_zones, scale=5*sigma_fraction*taper_mag)
+        
+        return [(LensErrors.kinoform_height_shrink, {"height": per_zone_heights, "proportion": False}),
+                (LensErrors.kinoform_zone_shrink, {"err": per_zone_shrink}),
+                (LensErrors.kinoform_sidewall_taper, {"err": per_zone_taper, "proportion": 1., "zone_shift": False}),
+                (LensErrors.cap_height, {"h": 0.95 * per_zone_heights, "proportion": False}),
+                (LensErrors.cap_floor, {"h": 0.025, "proportion": True}),
+                (LensErrors.random_etch, {"max_err": 5e-8, "interval": 1, "distribution": "gaussian", "seed": seed})]
+    else:
+        simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz)
+        source = ConstantBeam(energy=E, simulation=simulation, z=0)
+        lens_tmp = FZP(wavelength=source.wavelength, f=f, R=R, n=n,
+                            simulation=simulation, z=0)
+        n_zones = len(lens_tmp.zone_heights)
+        sigma = sigma_fraction * height
+        per_zone_heights = np.clip(
+                    rng.normal(loc=height, scale=sigma, size=n_zones),
+                    0, lens_tmp.zone_heights
+                )
+        
+        return [(LensErrors.cap_height, {"h": per_zone_heights, "proportion": False}),
+                (LensErrors.FZP_sidewall_taper, {"err": 1e-8, "proportion": 1.0}),
+                (LensErrors.cap_floor, {"h": 0.05, "proportion": True}),
+                (LensErrors.random_etch, {"max_err": 5e-8, "interval": 1, "distribution": "gaussian", "seed": seed})]
+
+
 def build_errors(lens_type, height):
     if lens_type is Kinoform:
         return [(LensErrors.kinoform_height_shrink, {"height": height, "proportion": False}),
-                (LensErrors.kinoform_zone_shrink, {"err": 5e-9}),
+                (LensErrors.kinoform_zone_shrink, {"err": 1e-8}),
                 (LensErrors.kinoform_sidewall_taper, {"err":1e-8, "proportion":1., "zone_shift":False}),
                 (LensErrors.cap_height, {"h": 0.97*height, "proportion": False}),
-                (LensErrors.cap_floor, {"h": 0.002, "proportion": True}),
-                (LensErrors.random_etch, {"max_err": 5e-9, "interval": 2, "distribution": "gaussian", "seed": seed})]
+                (LensErrors.cap_floor, {"h": 0.02, "proportion": True}),
+                (LensErrors.random_etch, {"max_err": 5e-8, "interval": 1, "distribution": "gaussian", "seed": seed})]
     else:
         return [(LensErrors.FZP_sidewall_taper, {"err": 1e-8, "proportion": 1.0}),
                 (LensErrors.cap_floor, {"h": 0.02, "proportion": True}),
                 (LensErrors.cap_height, {"h": height, "proportion": False}),
-                (LensErrors.random_etch, {"max_err": 5e-9, "interval": 2, "distribution": "gaussian", "seed": seed})]
+                (LensErrors.random_etch, {"max_err": 5e-8, "interval": 1, "distribution": "gaussian", "seed": seed})]
         
         
 ## Results
@@ -95,7 +140,7 @@ def sideview_plot():
     print(f"Saved side-view to {out}")
     
     
-def plot_aberrated_intensity(lens_types: type[Kinoform] | type[FZP] | list[type[Kinoform] | type[FZP]]):
+def plot_aberrated_intensity(lens_types: type[Kinoform] | type[FZP] | list[type[Kinoform] | type[FZP]], err_func):
     from ..optics.metrics.lens_comparison import collect_metrics, print_comparison
 
     # if not isinstance(lens_types, list):
@@ -111,11 +156,14 @@ def plot_aberrated_intensity(lens_types: type[Kinoform] | type[FZP] | list[type[
     R = 1e-4
     n = xrl.Refractive_Index("Si", E / 1000, 2.329)
     
-    aspect_ratios = [25, 50]
+    # aspect_ratios = [42, 50]
+    # ideal_aspect_ratios = [50, 50]
+    aspect_ratios = [22, 50]
+    ideal_aspect_ratios = [25, 50]
     metrics_list = []
     focal_waves  = []
 
-    for lens_type, aspect_ratio in zip(lens_types, aspect_ratios): # type:ignore
+    for lens_type, aspect_ratio, ideal_aspect_ratio in zip(lens_types, aspect_ratios, ideal_aspect_ratios): # type:ignore
         label = f"Manufactured {lens_type.__name__}"
 
         simulation = SimulationObject(Lx=Lx, Nx=N, Lz=Lz)
@@ -131,11 +179,11 @@ def plot_aberrated_intensity(lens_types: type[Kinoform] | type[FZP] | list[type[
             
         height = aspect_ratio*lens.zone_widths[-1]
 
-        err = build_errors(lens_type, height)
+        err = err_func(lens_type, height)
         lens_error_profile(lens_type, err, 
-                           title=f"Manufactured {lens_type.__name__} Profile (Aspect Ratio {aspect_ratio}:1)",
+                           title=f"Manufactured {lens_type.__name__} Profile (Aspect Ratio ~{ideal_aspect_ratio}:1)",
                            savepath=savedir / f"{lens_type.__name__}_manufactured_profile.png", 
-                           show=True)
+                           show=True, r_limit=True)
         for error_func, kwargs in err:
             lens.add_error(error_func, **kwargs)
 
@@ -552,4 +600,4 @@ if __name__ == "__main__":
         show_profile=False
     )
     
-    plot_aberrated_intensity([Kinoform, FZP])
+    plot_aberrated_intensity([Kinoform, FZP], build_errors_random)
