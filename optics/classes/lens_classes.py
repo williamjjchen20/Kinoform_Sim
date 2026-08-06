@@ -439,30 +439,117 @@ class CompoundLens(ThinLens):
     pass
     
 class LensErrors():
-    '''
-    Takes in a lens of 'Lens' class and returns the lens profile including the error added
-    Returns updated lens and errors
-    '''
+    """Fabrication error models for diffractive lenses (:class:`Kinoform`, :class:`FZP`).
+
+    Each static method models a distinct physical imperfection that can occur
+    during lens fabrication. All methods follow the same calling convention
+    expected by :meth:`~.classes.ThinLens.add_error`:
+
+    .. code-block:: python
+
+        profile, err = LensErrors.<method>(lens, ...)
+        # or via add_error:
+        err = lens.add_error(LensErrors.<method>, ...)
+
+    Returns
+    -------
+    profile : ndarray
+        Updated thickness profile array (same shape as ``lens.profile``).
+    err : ndarray or None
+        Per-element or per-zone error values, or ``None`` when not applicable.
+    """
+
     @staticmethod 
-    def cap_height(lens: Kinoform | FZP, h: float, proportion=False) -> tuple[np.ndarray, np.ndarray | None]:
-        assert h > 0
-        height = lens.height
+    def cap_height(lens: Kinoform | FZP, h: float | np.ndarray, proportion=False) -> tuple[np.ndarray, np.ndarray | None]:
+        """Clamp the lens profile to a maximum height (height under-etch / incomplete etch).
+
+        Simulates fabrication defects where zones fail to reach full design
+        height. Profile values above the per-zone (or global) ``h_max`` are
+        clamped down. ``lens.height`` and ``lens.zone_heights`` are updated in
+        place.
+
+        Parameters
+        ----------
+        lens : Kinoform | FZP
+            Target diffractive lens.
+        h : float or array-like of float
+            Maximum allowed height. A scalar clamps every zone to the same
+            value; a 1-D array of length ``n_zones`` applies a per-zone cap.
+            If ``proportion=True``, values are interpreted as fractions of
+            ``lens.height`` (must lie in ``(0, 1]``); otherwise as absolute
+            thicknesses [m].
+        proportion : bool, optional
+            Interpret ``h`` as a fraction of the full zone height. Default is
+            ``False``.
+
+        Returns
+        -------
+        profile : ndarray
+            Updated profile with values clamped to the per-zone maxima.
+        h_max : ndarray
+            Per-zone maximum heights actually applied [m].
+        """
+        height = lens.zone_heights
+        r_left_all  = np.asarray(lens.zone_left)
+        r_right_all = np.asarray(lens.zone_right)
+        n_zones     = len(r_left_all)
+
+        h_arr = np.atleast_1d(np.asarray(h, dtype=np.float64))
+        if h_arr.size == 1:
+            h_arr = np.full(n_zones, float(h_arr[0]))
+                
+        assert h_arr.size == n_zones, \
+            f"h must be scalar or length-{n_zones} array (got {h_arr.size})"
+        assert np.all(h_arr > 0), "all h values must be > 0"
+
         if proportion:
-            assert h <= 1
-            h_max = h*height
+            assert np.all(h_arr <= 1), "proportion values must lie in (0, 1]"
+            h_max = h_arr * height
         else:
-            h_max = h
-        
-        mask = lens.profile > h_max
+            h_max = h_arr
+
+        if lens.dim == 1:
+            r = np.abs(lens.grid)
+        else:
+            X, Y = lens.grid
+            r = np.sqrt(X**2 + Y**2)
+
         profile = lens.profile
-        profile[mask] = h_max
-        
-        lens.height = h_max
-        lens.zone_heights[lens.zone_heights > h_max] = h_max
-        return profile, None
+        for i in range(n_zones):
+            zone_mask = (r >= r_left_all[i]) & (r < r_right_all[i])
+            cap_mask = zone_mask & (profile > h_max[i])
+            profile[cap_mask] = h_max[i]
+
+        lens.height = float(np.max(h_max))
+        lens.zone_heights = np.minimum(lens.zone_heights, h_max)
+        return profile, h_max
     
     @staticmethod
     def cap_floor(lens: Kinoform | FZP, h: float, proportion = False) -> tuple[np.ndarray, np.ndarray | None]:
+        """Raise the lens profile to a minimum height (floor / residual layer error).
+
+        Simulates a non-zero residual etch floor where the etched valleys never
+        reach zero thickness. All profile values below ``h_min`` are set to
+        ``h_min``.
+
+        Parameters
+        ----------
+        lens : Kinoform | FZP
+            Target diffractive lens.
+        h : float
+            Minimum allowed height. If ``proportion=True``, treated as a
+            fraction of ``lens.height`` (must be in ``(0, 1]``); otherwise
+            treated as an absolute thickness [m].
+        proportion : bool, optional
+            Interpret ``h`` as a fraction of the full zone height. Default is
+            ``False``.
+
+        Returns
+        -------
+        profile : ndarray
+            Updated profile with values raised to ``h_min``.
+        err : None
+        """
         assert h > 0
         height = lens.height
         if proportion:
@@ -478,6 +565,31 @@ class LensErrors():
     
     @staticmethod
     def periodic_etch(lens: ThinLens, err: float, interval: int = 1) -> tuple[np.ndarray, np.ndarray | None]:
+        """Apply a deterministic periodic thickness offset to aperture pixels.
+
+        Every ``interval``-th pixel inside the aperture (in ravel order) receives
+        an additive height perturbation of ``err``. The resulting profile is
+        clamped so it does not reverse the sign of the original (i.e. a positive
+        profile stays non-negative).
+
+        Parameters
+        ----------
+        lens : ThinLens
+            Target lens (any subclass).
+        err : float
+            Height perturbation applied to selected pixels [m]. May be negative.
+        interval : int, optional
+            Spacing between perturbed pixels (in flattened aperture index order).
+            Default is 1 (every pixel).
+
+        Returns
+        -------
+        profile : ndarray
+            Updated profile array.
+        errors : ndarray
+            Array of the same shape as ``lens.profile`` containing the applied
+            per-pixel error values (zero for unperturbed pixels).
+        """
         errors = np.zeros_like(lens.profile)
         aperture_mask = lens.aperture_field > 0
         aperture_idx = np.flatnonzero(aperture_mask.ravel())
@@ -497,6 +609,44 @@ class LensErrors():
     
     @staticmethod
     def random_etch(lens: ThinLens, max_err: float, interval: int = 1, distribution=None, seed=None) -> tuple[np.ndarray, np.ndarray | None]:
+        """Apply random thickness perturbations to a random subset of aperture pixels.
+
+        A random sample of ``len(aperture_pixels) // interval`` pixels inside the
+        aperture receives an additive height error drawn from the specified
+        distribution, scaled to ``max_err``. The result is clamped to preserve
+        the sign of the original profile.
+
+        Parameters
+        ----------
+        lens : ThinLens
+            Target lens (any subclass).
+        max_err : float
+            Scale of the random perturbations [m]. Interpretation depends on
+            ``distribution``:
+
+            - ``None`` (default): uniform draw from ``[-max_err, max_err]``.
+            - ``"gaussian"``: normal draw scaled by ``max_err``.
+            - ``"cauchy"``: standard Cauchy draw scaled by ``max_err``.
+            - ``"exponential"``: standard exponential draw scaled by ``max_err``.
+
+        interval : int, optional
+            Subsampling factor. Approximately ``1/interval`` of aperture pixels
+            are perturbed. Default is 1 (all pixels).
+        distribution : str or None, optional
+            Random distribution to use (see ``max_err`` above). Default is
+            ``None`` (uniform).
+        seed : int or None, optional
+            Seed for the random number generator (reproducibility). Default is
+            ``0`` when ``None``.
+
+        Returns
+        -------
+        profile : ndarray
+            Updated profile array.
+        errors : ndarray
+            Array of the same shape as ``lens.profile`` with per-pixel error
+            values (zero for unperturbed pixels).
+        """
         if seed is None: seed = 0
         rng = np.random.default_rng(seed)
         
@@ -530,9 +680,34 @@ class LensErrors():
     
     @staticmethod
     def gaussian_etch(lens: CircularLens, max_err:float, invert=False, seed=None) -> tuple[np.ndarray, np.ndarray | None]:
-        '''
-        Generates error distributed over circular lens aperture according to a Gaussian distribution
-        '''
+        """Apply spatially Gaussian-weighted random thickness perturbations.
+
+        Generates a random error field whose envelope is a Gaussian with
+        ``sigma = lens.R / 3`` (so that 3-sigma spans the full aperture radius).
+        Each pixel's error is a uniform random value in ``[-max_err, max_err]``
+        multiplied by the Gaussian weight at that pixel.
+
+        Parameters
+        ----------
+        lens : CircularLens
+            Target circular lens (any subclass).
+        max_err : float
+            Maximum absolute thickness perturbation [m] before the Gaussian
+            weighting is applied.
+        invert : bool, optional
+            If ``True``, use ``1 - G(r)`` as the envelope, concentrating errors
+            near the aperture edge rather than the centre. Default is ``False``.
+        seed : int or None, optional
+            Seed for the random number generator. Default is ``0`` when ``None``.
+
+        Returns
+        -------
+        profile : ndarray
+            Updated profile array.
+        errors : ndarray
+            Spatially distributed error field of the same shape as
+            ``lens.profile``.
+        """
         
         if seed is None: seed = 0
         rng = np.random.default_rng(seed)
@@ -559,6 +734,33 @@ class LensErrors():
     
     @staticmethod
     def zone_shift(lens: Kinoform | FZP, err: float | np.ndarray, verbose=False):
+        """Shift each zone's radial boundaries by a per-zone offset.
+
+        Simulates a lateral placement error where zone walls are displaced
+        outward (positive ``err``) or inward (negative ``err``). Each zone's
+        thickness profile is interpolated at the shifted radii so the overall
+        shape is preserved after the shift. ``lens.reshape`` is called to
+        update the stored zone boundary arrays.
+
+        Parameters
+        ----------
+        lens : Kinoform | FZP
+            Target diffractive lens.
+        err : float or ndarray
+            Radial shift applied to each zone boundary [m]. A scalar applies the
+            same shift to all zones; a 1-D array of length ``<= m_total`` applies
+            per-zone shifts.
+        verbose : bool, optional
+            Print a warning when the lens profile is being mutated. Default is
+            ``False``.
+
+        Returns
+        -------
+        profile : ndarray
+            Updated profile array after zone remapping.
+        err : ndarray
+            Per-zone shift values as a 1-D array of length ``m_total``.
+        """
         m_total = int(np.ceil(lens.zones))
         # cumulative per-zone shift: eps[m] is applied to outer boundary r_m[m]
         if isinstance(err, (int, float)): 
@@ -616,23 +818,49 @@ class LensErrors():
 
     @staticmethod
     def zone_removal(kinoform: Kinoform, m: int | np.ndarray = -1, err: float | np.ndarray = 0., direction: str ="out", extend=False, remove_last=False, mutable=False) -> tuple[np.ndarray, np.ndarray | None]:
-        '''
-        Adds a taper by a specified percentage on a specified lateral zone
+        """Zero out a radial strip at the inner or outer edge of one or more zones.
 
-        args
-        - kinoform: Kinoform lens
-        - m: lateral zone number (negative indices count back from the last band)
-        - proportion: radius proportion tapered off (>=0. & <= 1.)
+        Models a partial zone removal (under-etch or over-etch at zone walls)
+        where a strip of width ``err`` is set to zero thickness. The strip is
+        taken from the outward edge (``direction="out"``) or inward edge
+        (``direction="in"``) of each targeted zone.
 
-        kwargs
-        - direction: inward "in" or outward "out" from the specified zone
-        - extend: taper all zones m' >= m
-        - remove_last: also remove the trailing partial zone (band that the
-          aperture clips). Equivalent to appending m_total-1 with proportion=1.
-        - mutable: if True, shrink the lens aperture (R, aperture_field,
-          zone_locations, zone_widths) to exclude fully-removed outer zones,
-          mirroring the mutation semantics in `zone_placement`.
-        '''
+        Parameters
+        ----------
+        kinoform : Kinoform
+            Target kinoform lens.
+        m : int or array-like of int, optional
+            Zone index(es) to modify. Negative indices count from the last band.
+            Default is ``-1`` (last zone).
+        err : float or array-like of float, optional
+            Width of the strip to zero out [m] for each targeted zone. A scalar
+            applies the same width to all targeted zones. Default is ``0``.
+        direction : {"out", "in"}, optional
+            Whether to remove from the outer (``"out"``) or inner (``"in"``)
+            edge of each zone. Default is ``"out"``.
+        extend : bool, optional
+            If ``True``, apply the removal to all zones ``m' >= min(m)``.
+            Default is ``False``.
+        remove_last : bool, optional
+            If ``True``, also fully remove the trailing partial zone (the band
+            clipped by the aperture boundary). Default is ``False``.
+        mutable : bool, optional
+            If ``True``, shrink the aperture (``R``, ``aperture_field``,
+            ``zone_locations``, ``zone_widths``) to exclude fully-removed outer
+            zones. Default is ``False``.
+
+        Returns
+        -------
+        profile : ndarray
+            Updated profile with the selected strips zeroed out.
+        errs : ndarray
+            Per-zone removal widths as a 1-D float array.
+
+        Raises
+        ------
+        ValueError
+            If ``direction`` is not ``"in"`` or ``"out"``.
+        """
         zones = kinoform.zones
         zone_widths = kinoform.zone_widths
         # number of zone bands, including the trailing partial one inside R
@@ -720,6 +948,33 @@ class LensErrors():
     
     @staticmethod
     def FZP_sidewall_taper(FZP: FZP, err: float | np.ndarray, proportion=1.) -> tuple[np.ndarray, np.ndarray | None]:
+        """Apply a linear sidewall taper to the transparent zones of an FZP.
+
+        Simulates sloped zone walls produced by imperfect etching: instead of
+        vertical walls, each transparent zone rises linearly from zero at its
+        inner edge and falls linearly to zero at its outer edge, over a taper
+        width of ``proportion * err`` on each side.
+
+        Parameters
+        ----------
+        FZP : FZP
+            Target Fresnel zone plate lens.
+        err : float or array-like of float
+            Taper half-width [m] for each transparent zone. A scalar applies the
+            same taper to every zone; an array must have one entry per transparent
+            zone.
+        proportion : float, optional
+            Fraction of ``err`` actually applied as the taper width. Default is
+            ``1.0`` (full ``err``).
+
+        Returns
+        -------
+        profile : ndarray
+            Updated profile with linear sidewall tapers applied to transparent
+            zones.
+        errs : ndarray
+            Per-zone taper widths as a 1-D float array.
+        """
         zone_locations = np.array(FZP.zone_locations)
         # Transparent-zone boundaries.
         # zone_locations = [0, r_1, r_2, r_3, ...].
@@ -754,42 +1009,50 @@ class LensErrors():
             X, Y = FZP.grid
             r = np.sqrt(X**2 + Y**2)
 
-        t0      = FZP.height
+        heights      = FZP.zone_heights
         profile = np.array(FZP.profile)
 
-        for r1, r2, r3, r4 in zip(r_start, r_left, r_right, r_end):
+        for i, (r1, r2, r3, r4) in enumerate(zip(r_start, r_left, r_right, r_end)):
             if r2 > r1:
                 mask_left  = (r >= r1) & (r < r2)
                 r_mask     = r[mask_left]
-                profile[mask_left] = t0 / (r2 - r1) * (r_mask - r1)
+                profile[mask_left] = heights[i] / (r2 - r1) * (r_mask - r1)
 
             if r4 > r3:
                 mask_right = (r >= r3) & (r < r4)
                 r_mask     = r[mask_right]
-                profile[mask_right] = -t0 / (r4 - r3) * (r_mask - r4)
+                profile[mask_right] = -heights[i] / (r4 - r3) * (r_mask - r4)
 
         return profile, errs
     
     @staticmethod
     def zone_quantization(lens: Kinoform, points, m : int | np.ndarray=-1) -> tuple[np.ndarray, np.ndarray | None]:
-        '''
-        Quantize the profile within one or more zones using user-supplied
-        (radius, height) points. Within each target zone, the profile is
-        the piecewise-linear interpolation of the anchors that fall inside that
-        zone, extended to the zone boundaries by anchoring
-            (r_left, 0) and (r_right, h)   (h = lens.height, the 2pi step).
-        Untargeted zones are left untouched.
+        """Overwrite the profile inside target zones with a piecewise-linear interpolation.
+
+        Within each targeted zone the profile is replaced by the piecewise-linear
+        function defined by the supplied anchor ``(radius, height)`` pairs. Zones
+        not listed in ``m`` are left untouched.
 
         Parameters
         ----------
-        lens : Kinoform | FZP
-            Lens whose zone_locations define the bands.
-        points : array-like, shape (K, 2)
-            Anchor (radius, height) pairs. Anchors outside every targeted zone
-            are ignored.
-        m : int | array-like of int, default -1
+        lens : Kinoform
+            Lens whose ``zone_left`` / ``zone_right`` arrays define the bands.
+        points : list of array-like, each of shape (K_i, 2)
+            One ``(radius, height)`` anchor array per targeted zone. All radius
+            values within an entry must lie inside the corresponding zone
+            ``[r_left, r_right)``.
+        m : int or array-like of int, optional
             Zone indices to quantize. Negative indices count from the last band.
-        '''
+            Must match ``len(points)`` after conversion. Default is ``-1``
+            (last zone).
+
+        Returns
+        -------
+        profile : ndarray
+            Updated profile with the selected zones replaced by piecewise-linear
+            interpolation.
+        err : None
+        """
         
         r_left_all, r_right_all = np.asarray(lens.zone_left), np.asarray(lens.zone_right) #zone_locations[:-1], zone_locations[1:]
         m_total = int(np.ceil(lens.zones))
@@ -825,6 +1088,41 @@ class LensErrors():
     
     @staticmethod
     def kinoform_sidewall_taper(kinoform: Kinoform, err: float | np.ndarray, proportion=1., zone_shift=False, reshape=False) -> tuple[np.ndarray, np.ndarray | None]:
+        """Apply a positive sidewall taper to the rising edge of each kinoform zone.
+
+        Simulates sloped inner zone walls caused by finite etch resolution. The
+        leading (low-height) edge of each zone is replaced by a taper that rises
+        from zero to the design height over a width of ``proportion * err``.
+        The taper shape within each zone is fitted as a quadratic through the
+        zone's boundary points and the original midpoint height.
+
+        Internally this calls :meth:`zone_removal` (or :meth:`zone_shift` when
+        ``zone_shift=True``) to clear the region that will be tapered, then
+        constructs the taper via :meth:`zone_quantization`.
+
+        Parameters
+        ----------
+        kinoform : Kinoform
+            Target kinoform lens.
+        err : float or array-like of float
+            Taper width [m] for each zone. A scalar applies the same taper to
+            all zones; an array must have one entry per zone.
+        proportion : float, optional
+            Fraction of ``err`` applied as the actual taper extent. Default is
+            ``1.0``.
+        zone_shift : bool, optional
+            If ``True``, use :meth:`zone_shift` to generate the initial removal
+            instead of :meth:`zone_removal`. Default is ``False``.
+        reshape : bool, optional
+            Reserved for future use. Default is ``False``.
+
+        Returns
+        -------
+        profile : ndarray
+            Updated profile with tapered zone walls.
+        errs : ndarray
+            Per-zone taper widths as a 1-D float array.
+        """
         
         r_left_all = np.asarray(kinoform.zone_left)
         r_right_all = np.asarray(kinoform.zone_right)
@@ -915,6 +1213,32 @@ class LensErrors():
     
     @staticmethod
     def kinoform_zone_shrink(kinoform: Kinoform, err: float | np.ndarray, direction="out") -> tuple[np.ndarray, np.ndarray | None]:
+        """Shrink each kinoform zone radially without applying a taper.
+
+        Removes a strip of width ``err`` from each zone (via
+        :meth:`kinoform_sidewall_taper` with ``proportion=0``) and then
+        optionally shifts the remaining zones outward (``direction="out"``) via
+        :meth:`zone_shift`.
+
+        Parameters
+        ----------
+        kinoform : Kinoform
+            Target kinoform lens.
+        err : float or array-like of float
+            Radial shrink width [m] per zone.
+        direction : {"out", "in"}, optional
+            After shrinking, shift zones outward (``"out"``) via
+            :meth:`zone_shift`. If ``"in"`` (or any other value), the shift step
+            is skipped. Default is ``"out"``.
+
+        Returns
+        -------
+        profile : ndarray
+            Updated ``kinoform.profile`` after shrinking.
+        errs : ndarray or None
+            Per-zone shift values from :meth:`zone_shift`, or ``None`` if no
+            shift was applied.
+        """
         errs = kinoform.add_error(LensErrors.kinoform_sidewall_taper, err=err, proportion=0., zone_shift=False)
         if direction == "out":
             errs = kinoform.add_error(LensErrors.zone_shift, err=err)
@@ -922,19 +1246,36 @@ class LensErrors():
     
     @staticmethod
     def kinoform_height_shrink(kinoform: Kinoform, height: float | np.ndarray, proportion=True) -> tuple[np.ndarray, np.ndarray | None]:
+        """Reduce the peak height of each kinoform zone while preserving zone boundaries.
 
-        '''
-        Shrink each zone's peak height to a user-specified value while keeping
-        zone boundaries fixed. Within each zone, the profile is refit as a
-        quadratic through (r_l, 0), (r_mid, h_mid), (r_r, target_height),
-        where h_mid is the original profile height at r_mid rescaled by
-        target_height / kinoform.height (so the curvature shape is preserved).
+        Simulates a systematic height under-etch where each zone reaches only a
+        fraction (or absolute value) of its design height. The profile within
+        each zone is refit as a quadratic through ``(r_l, 0)``,
+        ``(r_mid, h_mid_scaled)``, ``(r_r, target_height)`` so that the
+        curvature shape is preserved under the rescaling.
 
-        args
-        - height: scalar target height applied to every zone, or 1D array of
-                  length == number of zone bands specifying per-zone targets.
-                  Each entry must lie in [0, kinoform.height].
-        '''
+        Parameters
+        ----------
+        kinoform : Kinoform
+            Target kinoform lens.
+        height : float or array-like of float
+            Target peak height for each zone. If ``proportion=True`` (default),
+            treated as a fraction of each zone's ``zone_heights`` entry (must be
+            in ``[0, 1]``). If ``proportion=False``, treated as an absolute
+            thickness [m]. A scalar applies the same value to all zones; a 1-D
+            array of length ``n_zones`` applies per-zone targets. Each value must
+            lie in ``[0, zone_heights[i]]``.
+        proportion : bool, optional
+            Interpret ``height`` as a fraction of the full design height per zone.
+            Default is ``True``.
+
+        Returns
+        -------
+        profile : ndarray
+            Updated profile with rescaled zone heights.
+        heights : ndarray
+            Per-zone target heights as a 1-D float array of length ``n_zones``.
+        """
         r_left_all  = np.asarray(kinoform.zone_left)
         r_right_all = np.asarray(kinoform.zone_right)
         
@@ -1009,16 +1350,42 @@ class LensErrors():
 
     @staticmethod
     def kinoform_zone_warping(kinoform: Kinoform, R_min=None, R_max=None, beam_width=1e-8) -> tuple[np.ndarray, np.ndarray | None]:
-        '''
-        Warp thin outer zones toward an FZP-like rectangle by resampling them
-        with only `ns = floor(zone_width / beam_width)` interior anchors, so
-        that the linear interpolation done by `zone_quantization` collapses
-        to a step as the zone approaches the beam width. Wider zones (below
-        `tol`) are left untouched.
+        """Warp thin outer kinoform zones toward an FZP-like rectangular profile.
 
-        Endpoint anchors are sampled from the current `kinoform.profile` at
-        each zone's boundary, so no artificial 0/h endpoints are imposed.
-        '''
+        Simulates the resolution limit of the fabrication process: zones whose
+        width approaches ``beam_width`` can no longer be lithographically
+        resolved as smooth ramps and instead collapse toward binary (FZP-like)
+        rectangles. The warping is achieved by resampling each targeted zone with
+        only ``ns = floor(zone_width / beam_width)`` interior anchors and
+        applying a logistic-weighted sampling so that the piecewise-linear fill
+        from :meth:`zone_quantization` flattens as ``zone_width -> beam_width``.
+
+        Endpoint anchor heights are taken directly from the current
+        ``kinoform.profile`` (no artificial 0/h endpoints are imposed), so
+        the error is additive on top of any previously applied perturbations.
+
+        Parameters
+        ----------
+        kinoform : Kinoform
+            Target kinoform lens.
+        R_min : float or None, optional
+            Inner radius boundary [m] of the zone range to warp. Zones with
+            ``zone_left < R_min`` are skipped. Default is ``0`` (all zones).
+        R_max : float or None, optional
+            Outer radius boundary [m] of the zone range to warp. Zones with
+            ``zone_left >= R_max`` are skipped. Default is ``kinoform.R``
+            (all zones).
+        beam_width : float, optional
+            Minimum resolvable feature size [m] of the fabrication process.
+            Zones narrower than this are fully collapsed to a rectangle.
+            Default is ``1e-8`` m.
+
+        Returns
+        -------
+        profile : ndarray
+            Updated profile with warped zone shapes.
+        err : None
+        """
         h = kinoform.height
         R = kinoform.R
         
