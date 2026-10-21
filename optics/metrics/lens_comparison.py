@@ -263,8 +263,8 @@ def test_compare_xray_lenses(lens_dict, N, dim, extend=False, mark_fwhm=False):
     E = 8e3        # eV
     f = 0.1        # m
     R = 1e-4       # m
-    f = 1.0        # m
-    R = 5e-5       # m
+    # f = 1.0        # m
+    # R = 5e-5       # m
     
     n = xrl.Refractive_Index("Si", E / 1000, 2.329)
     
@@ -276,6 +276,8 @@ def test_compare_xray_lenses(lens_dict, N, dim, extend=False, mark_fwhm=False):
     ref_source, ref_lens, P_in = run_lens(
         Kinoform, ref_sim, AngularSpectrum(ref_sim), E, f, R, n
     )
+    
+    ## Initialize zoom parameters
     m = collect_metrics(P_in, ref_source, ref_lens, "reference")
     ref_fwhm = m.get("fwhm", np.inf)
     ref_I = m.get("I_max", 1.)

@@ -556,6 +556,10 @@ def plot_error_sweep(sweep_name: str, error_func, sweep_param: str,
     print(f"Saved error metrics plot to {out}")
 
 if __name__ == "__main__":
+    
+    if not savedir.exists():
+        os.mkdir(savedir)
+    
     lens_error_profile(XrayParabolicLens, lf=3.0, lR=5e-5, show=False, savepath=savedir/ "Ideal_parabolic.png")
     lens_error_profile(FZP, show=False, savepath=savedir/ "Ideal_FZP.png")
     lens_error_profile(Kinoform, lf=3.0, lR=5e-5, show=False, savepath=savedir/ "Ideal_kino.png")

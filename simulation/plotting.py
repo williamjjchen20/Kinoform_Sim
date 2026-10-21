@@ -182,11 +182,14 @@ if __name__ == "__main__":
     Lz = 2*f
     n = xrl.Refractive_Index("Si", E / 1000, 2.329)
 
-    sim = SimulationObject(Lx=Lx, Lz=Lz, Nx=N, Ny=N)
+    N_2d = 10000
+    sim = SimulationObject(Lx=Lx, Ly=Lx, Lz=Lz, Nx=N_2d, Ny=N_2d)
     source = GaussianBeam(energy=E, simulation=sim, z=0, w0=R)
     lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n,
                     simulation=sim, z=f/2)
-
+    
+    plot_full_lens_profile(lens)
+    
     dz = 0.001
     z_lim = f + lens.z
     assert (z_lim <= Lz)
