@@ -11,10 +11,20 @@ from abc import abstractmethod
 __all__ = ["SimulationObject", "Propagator", "Waveform", "Aperture", "ThinLens"]
 
 JOULE_TO_EV = 1/const.e
-        
+
+# storage dtypes per precision: (real, complex)
+PRECISIONS = {
+    "single": (np.float32, np.complex64),
+    "double": (np.float64, np.complex128),
+}
+
 class SimulationObject:
-    
-    def __init__(self, Lx, Nx, Lz, Ly=None, Ny=None, n=1):
+
+    def __init__(self, Lx, Nx, Lz, Ly=None, Ny=None, n=1, precision="double"):
+        '''
+        precision: "single" or "double". Sets the storage dtype of fields and
+        transfer functions. Grids and phase arguments are always float64.
+        '''
         if Ly is None or Ny is None:
             self.dim = 1
         elif Ly is not None and Ny is not None:
@@ -33,7 +43,12 @@ class SimulationObject:
         self.center = np.zeros(self.dim+1)
         self.center[-1] = Lz/2
         self.n = n
-        
+
+        if precision not in PRECISIONS:
+            raise ValueError(f"precision must be one of {list(PRECISIONS)}")
+        self.precision = precision
+        self.real_dtype, self.complex_dtype = PRECISIONS[precision]
+
         ## Add in objects (sources, apertures, lenses)
         self.propagator = None
         self.objects = dict()
@@ -97,13 +112,13 @@ class SimulationObject:
         
         # 2D -> 3D
         if dim == 2 and self.dim == 1:
-            sim = SimulationObject(Lx=self.Lx, Nx=np.sqrt(self.Nx), Lz=self.Lz, Ly=self.Lx, Ny=np.sqrt(self.Nx), n=self.n)
+            sim = SimulationObject(Lx=self.Lx, Nx=np.sqrt(self.Nx), Lz=self.Lz, Ly=self.Lx, Ny=np.sqrt(self.Nx), n=self.n, precision=self.precision)
         # 3D -> 2D
         elif dim == 1 and self.dim == 2:
-            sim = SimulationObject(Lx=self.Lx, Nx=(self.Nx)**2//2, Lz=self.Lz, Ly=None, Ny=None, n=self.n) 
-        # xD -> xD   
+            sim = SimulationObject(Lx=self.Lx, Nx=(self.Nx)**2//2, Lz=self.Lz, Ly=None, Ny=None, n=self.n, precision=self.precision)
+        # xD -> xD
         else:
-            sim = SimulationObject(Lx=self.Lx, Nx=self.Nx, Lz=self.Lz, Ly=self.Ly, Ny=self.Ny, n=self.n)
+            sim = SimulationObject(Lx=self.Lx, Nx=self.Nx, Lz=self.Lz, Ly=self.Ly, Ny=self.Ny, n=self.n, precision=self.precision)
             
         return sim
     
@@ -141,6 +156,7 @@ class Object():
         simulation.add_object(self)
         
     def _build_grid(self):
+        # grid stays double precision 
         sim = self.simulation
         if sim.dim == 1:
             self.grid = (np.arange(sim.Nx)-sim.Nx/2)*sim.dx#np.linspace(-sim.Lx/2, sim.Lx/2, sim.Nx)
@@ -157,7 +173,14 @@ class Object():
         else: # dim == 2
             self.field = self.func(*self.grid, z=z,**kwargs)
 
-    def func(self, *args, **kwargs):
+        ## precision gauge: waveforms are always complex, other objects keep their kind
+        sim = self.simulation
+        if isinstance(self, Waveform) or np.iscomplexobj(self.field):
+            self.field = np.asarray(self.field).astype(sim.complex_dtype, copy=False)
+        else:
+            self.field = np.asarray(self.field).astype(sim.real_dtype, copy=False)
+
+    def func(self, *args, **kwargs) -> np.ndarray:
         raise NotImplementedError("Distribution function has not been provided!")
     
     def add_error(self, error_func):
@@ -428,7 +451,6 @@ class ThinLens(Aperture):
             raise Exception("Warning: Invalid/no thickness profile provided.")
             
         self.profile = self.aperture_field * t
-        # self.orig_profile=np.array(self.profile)
         
     def reshape(self, aperture_func):
         print("Warning! Resetting changes...")
@@ -443,14 +465,15 @@ class ThinLens(Aperture):
     def transmittance(self, wavelength):
         k = 2*const.pi/wavelength
         n = self.n
-        t = np.exp(1j*k*(n-1.)*self.profile)
-        return t
-    
-    ## implements lens phase screen          
+        # phase evaluated in float64, cast to storage precision after exp
+        t = np.exp(1j*k*(n-1.)*np.asarray(self.profile, dtype=np.float64))
+        return t.astype(self.simulation.complex_dtype)
+
+    ## implements lens phase screen
     def init_transmittance(self, wave: Waveform):
         assert(not self._transmittance_initialized)
         t_l = self.transmittance
-        base = self.aperture_field.astype(np.complex128)
+        base = self.aperture_field.astype(self.simulation.complex_dtype)
         self.field = base * t_l(wave.wavelength)
         self._transmittance_initialized = True
         
@@ -460,7 +483,7 @@ class ThinLens(Aperture):
             self.init_transmittance(wave)
             self._transmittance_initialized = True
 
-        wave.field = wave.field.astype(np.complex128)*self.field
+        wave.field = wave.field.astype(self.simulation.complex_dtype, copy=False)*self.field
     
     ## error functions
     def add_error(self, error_func, **kwargs):

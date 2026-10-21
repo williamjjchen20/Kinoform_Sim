@@ -63,7 +63,7 @@ def angular_spectrum_method(wave: Waveform, dz: float, n:float=1.) -> np.ndarray
     
     # Parameters
     simulation = wave.simulation
-    U = wave.field
+    U = wave.field.astype(simulation.complex_dtype, copy=False)
     wavelength = wave.wavelength
     dim = wave.dim
     
@@ -86,7 +86,7 @@ def angular_spectrum_method(wave: Waveform, dz: float, n:float=1.) -> np.ndarray
     if dim == 1:
         # nyquist ordering
         kx = 2*const.pi*(np.fft.fftfreq(Nx, dx))
-        kz = np.sqrt((K**2 - kx**2).astype(complex))
+        kz = np.sqrt((K**2 - kx**2).astype(np.complex128))  # float64: kz*dz ~ 1e10 rad at X-ray energies
         
         # Evanescent condition
         K_c = kx**2 
@@ -99,7 +99,7 @@ def angular_spectrum_method(wave: Waveform, dz: float, n:float=1.) -> np.ndarray
         assert Ly is not None and Ny is not None and dy is not None
         ky = 2*const.pi*np.fft.fftfreq(Ny, dy)
         kx, ky = np.meshgrid(kx, ky)
-        kz = np.sqrt((K**2 - kx**2 - ky**2).astype(complex))
+        kz = np.sqrt((K**2 - kx**2 - ky**2).astype(np.complex128))  # float64: kz*dz ~ 1e10 rad at X-ray energies
         
         # Evanescent condition
         K_c = kx**2 + ky**2
@@ -113,6 +113,7 @@ def angular_spectrum_method(wave: Waveform, dz: float, n:float=1.) -> np.ndarray
     H = np.exp(1j*kz*dz)
     H[K_c > K**2] = 0 # evanescent waves filtered out 
     H[~band_mask] = 0 # aliasing removed 
+    H = H.astype(simulation.complex_dtype)
     
     # Calculate the propagated waveform via an inverse FT and shift back to standard ordering
     Uz = np.fft.ifftshift(ifft(A0 * H, workers=-1))
@@ -137,7 +138,7 @@ def scaled_angular_spectrum_method(wave: Waveform, dz: float, n: float=1., Rx=1.
     '''
     
     simulation = wave.simulation
-    U = wave.field
+    U = wave.field.astype(simulation.complex_dtype, copy=False)
     wavelength = wave.wavelength
     dim = wave.dim
     
@@ -160,7 +161,7 @@ def scaled_angular_spectrum_method(wave: Waveform, dz: float, n: float=1., Rx=1.
         mf = np.arange(Nx) - Nx//2
         kx = 2*const.pi * mf / (Nx*dx)
         # standard array ordering
-        kz = np.sqrt((K**2 - kx**2 - (2*const.pi)**2*phi_c).astype(complex))
+        kz = np.sqrt((K**2 - kx**2 - (2*const.pi)**2*phi_c).astype(np.complex128))  # float64: kz*dz ~ 1e10 rad at X-ray energies
         
         # Evanescent condition
         K_c = kx**2
@@ -183,7 +184,7 @@ def scaled_angular_spectrum_method(wave: Waveform, dz: float, n: float=1., Rx=1.
         kx, ky = np.meshgrid(kx, ky)
         mfx, mfy = np.meshgrid(mfx, mfy)
         
-        kz = np.sqrt((K**2 - kx**2 - ky**2-(2*const.pi)**2*phi_c).astype(complex))
+        kz = np.sqrt((K**2 - kx**2 - ky**2-(2*const.pi)**2*phi_c).astype(np.complex128))  # float64: kz*dz ~ 1e10 rad at X-ray energies
         
         # Evanescent Condition
         K_c = kx**2 + ky**2
@@ -199,17 +200,23 @@ def scaled_angular_spectrum_method(wave: Waveform, dz: float, n: float=1., Rx=1.
     H = np.exp(1j*kz*dz)
     H[K_c > K**2] = 0
     H[~band_mask] = 0
-    Az = A0 * H
+    Az = A0 * H.astype(simulation.complex_dtype)
+    
+    # finufft runs in the precision of its inputs; float32 cannot reach below ~1e-6
+    real_dtype = simulation.real_dtype
+    eps = 1e-8 if real_dtype == np.float64 else 1e-6
     
     if dim == 1:
-        x_out = 2*const.pi*Rx*mf/Nx
-        Uz = nufft.nufft1d2(x_out, Az, eps=1e-8, isign=1)/Nx
+        assert isinstance(mf, np.ndarray)
+        x_out = (2*const.pi*Rx*mf/Nx).astype(real_dtype)
+        Uz = nufft.nufft1d2(x_out, Az, eps=eps, isign=1)/Nx
         wave.Rx = Rx
     else: # dim == 2:
         assert Ny is not None
-        x_out = 2*const.pi * Rx * mfx.ravel() / Nx
-        y_out = 2*const.pi * Ry * mfy.ravel() / Ny
-        Uz = nufft.nufft2d2(x_out, y_out, Az, eps=1e-8, isign=1).reshape(Ny, Nx)/(Nx * Ny)
+        assert isinstance(mfx, np.ndarray) and isinstance(mfy, np.ndarray)
+        x_out = (2*const.pi * Rx * mfx.ravel() / Nx).astype(real_dtype)
+        y_out = (2*const.pi * Ry * mfy.ravel() / Ny).astype(real_dtype)
+        Uz = nufft.nufft2d2(x_out, y_out, Az, eps=eps, isign=1).reshape(Ny, Nx)/(Nx * Ny)
         wave.Rx, wave.Ry = Rx, Ry
         
     return Uz

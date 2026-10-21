@@ -6,6 +6,7 @@ import xraylib as xrl
 import os, functools
 from pathlib import Path
 import argparse
+import time, tracemalloc
 
 from ..propagators import *
 from ..classes import *
@@ -18,6 +19,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("-N", type=int, required=True)
 parser.add_argument("--dim", type=int, choices=[1, 2], default=2,
                     help="simulation dimensionality (1 or 2)")
+parser.add_argument("--precision", type=str, choices=["single", "double"], default="double",
+                    help="simulation precision (single or double)")
 parser.add_argument("--extend", action="store_true", default=False,
                     help="render 2D focal/lens views as 3D surfaces")
 parser.add_argument("--mark-fwhm", action="store_true", default=True,
@@ -253,7 +256,7 @@ def plot_comparison_2D(results, savepath, extend=False, mark_fwhm=False):
     fig.savefig(savepath)
     plt.close(fig)
 
-def test_compare_xray_lenses(lens_dict, N, dim, extend=False, mark_fwhm=False):
+def test_compare_xray_lenses(lens_dict, N, dim, precision, extend=False, mark_fwhm=False):
     print("Comparing Lenses...")
     
     # Parameters
@@ -272,7 +275,7 @@ def test_compare_xray_lenses(lens_dict, N, dim, extend=False, mark_fwhm=False):
     print(f"Energy = {E} eV, f = {f} m, R = {R} m")
     
     ## Initialize box sizes
-    ref_sim = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=1024)
+    ref_sim = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=1024, precision="double")
     ref_source, ref_lens, P_in = run_lens(
         Kinoform, ref_sim, AngularSpectrum(ref_sim), E, f, R, n
     )
@@ -301,7 +304,7 @@ def test_compare_xray_lenses(lens_dict, N, dim, extend=False, mark_fwhm=False):
     metrics = []
     results = {}
     for name in lens_dict:
-        sim = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=N)
+        sim = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=N, precision=precision)
         propagator = ScaledAngularSpectrum(sim, Rx=Rx, Ry=Ry)
         
         entry = lens_dict[name]
@@ -476,8 +479,12 @@ def take_user_input():
 def main():
     args = parser.parse_args()
     lenses = take_user_input()
-    print(lenses)
-    test_compare_xray_lenses(lenses, args.N, args.dim, extend=args.extend, mark_fwhm=args.mark_fwhm)
-
+    # print(lenses)
+    time_s = time.time(); tracemalloc.start()
+    test_compare_xray_lenses(lenses, args.N, args.dim, args.precision, extend=args.extend, mark_fwhm=args.mark_fwhm)
+    time_e = time.time(); _, peak = tracemalloc.get_traced_memory()
+    
+    print(f"Simulation took {time_e-time_s:3f} seconds, with peak memory usage of {peak/10**9:3f} GB.")
+    
 if __name__ == "__main__":
     main()
