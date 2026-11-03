@@ -216,13 +216,14 @@ class Object():
                     vmin = 1e-4*data.max() if data.max() > 0 else 0.0
                     vmax = data.max() if data.max() > 0 else 1.0
                     lnorm = colors.Normalize(vmin=vmin, vmax=vmax)
-                    lv = lnorm(data)
-                    v = np.clip(lv.filled(0) if hasattr(lv, "filled") else lv, 0, 1)
-                    hue = (phase + np.pi)/ (2*np.pi)
-                    rgb_phase = plt.get_cmap(_phase_cmap)(hue)[..., :3]
-                    rgb = rgb_phase * v[..., None]
                     norm = lnorm
-                    sm = cm.ScalarMappable(norm=lnorm, cmap="Greys_r")
+                    if phase:
+                        lv = lnorm(data)
+                        v = np.clip(lv.filled(0) if hasattr(lv, "filled") else lv, 0, 1)
+                        hue = (phase + np.pi)/ (2*np.pi)
+                        rgb_phase = plt.get_cmap(_phase_cmap)(hue)[..., :3]
+                        rgb = rgb_phase * v[..., None]
+                        sm = cm.ScalarMappable(norm=lnorm, cmap="Greys_r")
                 else:
                     norm = sm = rgb = None
                     
@@ -352,11 +353,11 @@ class Object():
             used_ax = ax
 
         if savedir:
-            fig.savefig(os.path.join(savedir, f"{type(self).__name__}_z={self.center[-1]}.png"))
+            fig.savefig(os.path.join(savedir))
         return used_ax
 
 class Waveform(Object):
-    def __init__(self, energy: float, simulation: SimulationObject, z: float, func=None, **kwargs):
+    def __init__(self, energy: float | np.ndarray, simulation: SimulationObject, z: float, func=None, **kwargs):
         '''
         energy: energy of waveform in eV
         '''

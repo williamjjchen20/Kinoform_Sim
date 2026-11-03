@@ -1,5 +1,6 @@
 import numpy as np
 import scipy.constants as const
+import functools
 
 from .classes import Waveform, SimulationObject
 
@@ -242,4 +243,34 @@ class ConstantBeam(Waveform):
         wavelength = self.wavelength
         k = 2*const.pi/wavelength
         U = np.ones_like(X)*U0*np.exp(1j*k*z)
-        return U
+        return U 
+
+class PolychromaticWaveform(Waveform):
+    def __init__(self, energies, weights, waveform_cls, simulation, z, **kwargs):
+        self.spec_shape = (-1,) + (1,)*simulation.dim # tuple shaped with first dimension as spectrum count
+        self.energy = energies.reshape(self.spec_shape)
+        self.weights = np.asarray(weights, dtype=float) / np.sum(weights)
+        self.waveform_cls = waveform_cls
+        func = functools.partial(waveform_cls.func, self)   # borrow GaussianBeam/ConstantBeam profile
+        
+        super().__init__(energies.reshape(self.spec_shape), simulation, z, func=func, **kwargs)
+        self.energy = energies.reshape(self.spec_shape)
+        self.wavelength = self.wavelength.reshape(self.spec_shape)
+        self.field *= np.sqrt(self.weights).reshape(self.spec_shape).astype(simulation.complex_dtype)
+        
+    def __repr__(self):
+        return f"{self.simulation.dim}-D Waveform with energy spectrum of {len(self.energy)} ranging from {np.min(self.energy)}-{np.max(self.energy)}."
+    
+    def copy(self):
+        return PolychromaticWaveform(self.energy, self.weights, self.waveform_cls, self.simulation.copy(), z=self.z, **self.kwargs)        
+        
+    def phase(self):
+        print("Polychromatic beam has no defined phase!")
+        return None
+
+    def intensity(self):            # all metrics in metrics.py go through this
+        return np.sum(np.abs(self.field)**2, axis=0)
+
+    def spectral_intensity(self):   # per-wavelength, shape (Nλ, ...)
+        return np.abs(self.field)**2
+

@@ -8,7 +8,7 @@ import finufft as nufft
 from numba import njit
 
 pyfftw.interfaces.cache.enable()   # plan cache persists across calls
-from .classes import SimulationObject, Waveform, Propagator
+from .classes import SimulationObject, Waveform, PolychromaticWaveform, Propagator
 
 class AngularSpectrum(Propagator):
     def __init__(self, simulation):
@@ -26,7 +26,7 @@ class AngularSpectrum(Propagator):
         assert dim == sim.dim
         
         f_s = wavelength*np.abs(z)/D
-        if Lx/Nx > f_s: 
+        if Lx/Nx > f_s/2: 
             raise Exception(f"Nyquist criterion not met! Use Nx >= {np.round(Lx/f_s)}")
         if dim == 2 and Ly/Ny > f_s: #type: ignore
             raise Exception(f"Nyquist criterion not met! Use Ny >= {np.round(Ly/f_s)}")
@@ -65,14 +65,21 @@ def angular_spectrum_method(wave: Waveform, dz: float, n:float=1.) -> np.ndarray
     simulation = wave.simulation
     U = wave.field.astype(simulation.complex_dtype, copy=False)
     wavelength = wave.wavelength
+    
+    is_poly = isinstance(wave, PolychromaticWaveform)
+    if not is_poly: U = U[None]; wavelength = np.array(wavelength)[None]
     dim = wave.dim
+    axes = tuple(range(-dim, 0))
+    
+    # Check for spectral conditions (polychromatic beam
     
     Lx, Ly = simulation.Lx, simulation.Ly
     Nx, Ny = simulation.Nx, simulation.Ny
     dx, dy = simulation.dx, simulation.dy
     
     # Set input waveform to nyquist ordering (0-centered)
-    U0 = np.fft.fftshift(U)
+    assert isinstance(U, np.ndarray)
+    U0 = np.fft.fftshift(U, axes=axes)
     # Calculate the intiial angular spectrum as a FT of the initial wavefunction
     if dim == 1:
         fft = fft_lib.fft
@@ -116,8 +123,8 @@ def angular_spectrum_method(wave: Waveform, dz: float, n:float=1.) -> np.ndarray
     H = H.astype(simulation.complex_dtype)
     
     # Calculate the propagated waveform via an inverse FT and shift back to standard ordering
-    Uz = np.fft.ifftshift(ifft(A0 * H, workers=-1))
-    return Uz
+    Uz = np.fft.ifftshift(ifft(A0 * H, workers=-1), axes=axes)   # spatial axes only: keep spectral ordering
+    return Uz if is_poly else Uz[0]
     
 def scaled_angular_spectrum_method(wave: Waveform, dz: float, n: float=1., Rx=1., Ry=1.) -> np.ndarray:
     '''
@@ -140,8 +147,12 @@ def scaled_angular_spectrum_method(wave: Waveform, dz: float, n: float=1., Rx=1.
     simulation = wave.simulation
     U = wave.field.astype(simulation.complex_dtype, copy=False)
     wavelength = wave.wavelength
-    dim = wave.dim
     
+    is_poly = isinstance(wave, PolychromaticWaveform)
+    if not is_poly: U = U[None]; wavelength = np.array(wavelength)[None]
+    dim = wave.dim
+    axes = tuple(range(-dim, 0))
+
     Lx, Ly = simulation.Lx, simulation.Ly
     Nx, Ny = simulation.Nx, simulation.Ny
     dx, dy = simulation.dx, simulation.dy
