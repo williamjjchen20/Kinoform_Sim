@@ -9,7 +9,7 @@ from ..classes import *
 from ..metrics import *
 
 script_dir = Path(__file__).resolve().parent
-savedir = (script_dir / "./test_figs/propagation_test").resolve()
+savedir = (script_dir / "../test_figs/propagation_test").resolve()
 
 F = WaveFunctions()
 
