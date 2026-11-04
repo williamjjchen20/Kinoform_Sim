@@ -248,13 +248,13 @@ class ConstantBeam(Waveform):
 class PolychromaticWaveform(Waveform):
     def __init__(self, energies, weights, waveform_cls, simulation, z, **kwargs):
         self.spec_shape = (-1,) + (1,)*simulation.dim # tuple shaped with first dimension as spectrum count
-        self.energy = energies.reshape(self.spec_shape)
+        self.energy = np.array(energies)
         self.weights = np.asarray(weights, dtype=float) / np.sum(weights)
         self.waveform_cls = waveform_cls
         func = functools.partial(waveform_cls.func, self)   # borrow GaussianBeam/ConstantBeam profile
         
         super().__init__(energies.reshape(self.spec_shape), simulation, z, func=func, **kwargs)
-        self.energy = energies.reshape(self.spec_shape)
+        # self.energy = energies.reshape(self.spec_shape)
         self.wavelength = self.wavelength.reshape(self.spec_shape)
         self.field *= np.sqrt(self.weights).reshape(self.spec_shape).astype(simulation.complex_dtype)
         

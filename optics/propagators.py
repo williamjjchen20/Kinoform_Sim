@@ -160,7 +160,7 @@ def scaled_angular_spectrum_method(wave: Waveform, dz: float, n: float=1., Rx=1.
     assert Rx <= 1 and Ry <= 1 # Zoom in condition
     
     # Set input waveform to nyquist ordering (0-centered)
-    U0 = np.fft.ifftshift(U)
+    U0 = np.fft.ifftshift(U, axes=axes)
     K = 2*const.pi*n/wavelength
     if dim == 1:
         fft = np.fft.fft
@@ -207,7 +207,7 @@ def scaled_angular_spectrum_method(wave: Waveform, dz: float, n: float=1., Rx=1.
         band_mask &= np.abs(ky) <= ky_max
     
         
-    A0 = np.fft.ifftshift(fft(U0))
+    A0 = np.fft.ifftshift(fft(U0), axes=axes)
     H = np.exp(1j*kz*dz)
     H[K_c > K**2] = 0
     H[~band_mask] = 0
@@ -227,8 +227,8 @@ def scaled_angular_spectrum_method(wave: Waveform, dz: float, n: float=1., Rx=1.
         assert isinstance(mfx, np.ndarray) and isinstance(mfy, np.ndarray)
         x_out = (2*const.pi * Rx * mfx.ravel() / Nx).astype(real_dtype)
         y_out = (2*const.pi * Ry * mfy.ravel() / Ny).astype(real_dtype)
-        Uz = nufft.nufft2d2(x_out, y_out, Az, eps=eps, isign=1).reshape(Ny, Nx)/(Nx * Ny)
+        Uz = nufft.nufft2d2(x_out, y_out, Az, eps=eps, isign=1).reshape(-1, Ny, Nx)/(Nx * Ny)
         wave.Rx, wave.Ry = Rx, Ry
         
-    return Uz
+    return Uz if is_poly else Uz[0]
     

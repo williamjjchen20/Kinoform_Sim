@@ -257,6 +257,48 @@ def test_poly_propagation():
         assert not np.allclose(poly.intensity(), mono.intensity())
         save = savedir
         poly.view(savedir=str(save / f"{waveform_cls.__name__}_Polychromatic_{dim}D"))
+        
+def test_poly_scaled_propagation():
+    print("="*60)
+    print("Polychromatic scaled propagation")
+    print("="*60)
+
+    dz = 1.0
+    Rx, Ry = 0.5, 0.5   # for even N, every 2nd output sample lands on the unscaled ASM grid
+
+    energies, weights = gaussian_spectrum(E0, BW_MULTILAYER, N_SPEC)
+    for dim in (1, 2):
+        waveform_cls, kwargs = (GaussianBeam, {"w0": R})
+        sim_poly, sim_mono, sim_ref = _make_sim(dim), _make_sim(dim), _make_sim(dim)
+        poly = _make_poly(waveform_cls, energies, weights, sim_poly, z=0, **kwargs)
+        mono = _make_mono(waveform_cls, E0, sim_mono, z=0, **kwargs)
+        ref = _make_poly(waveform_cls, energies, weights, sim_ref, z=0, **kwargs)
+
+        poly.propagate(dz, ScaledAngularSpectrum(sim_poly, Rx=Rx, Ry=Ry))
+        mono.propagate(dz, ScaledAngularSpectrum(sim_mono, Rx=Rx, Ry=Ry))
+        ref.propagate(dz, AngularSpectrum(simulation=sim_ref))
+
+        assert poly.z == mono.z == dz #type: ignore
+        spatial = (N,) if dim == 1 else (N_2D, N_2D)
+        assert mono.field.shape == spatial, mono.field.shape
+        assert poly.field.shape == (N_SPEC,) + spatial, poly.field.shape
+        assert poly.Rx == Rx and poly.Ry == (Ry if dim == 2 else 1.)
+
+        # Each spectral slice must match unscaled ASM over the zoomed window
+        if dim == 1:
+            zoomed, expected = poly.field[:, ::2], ref.field[:, N//4:3*N//4]
+        else:
+            window = slice(N_2D//4, 3*N_2D//4)
+            zoomed, expected = poly.field[:, ::2, ::2], ref.field[:, window, window]
+        spatial_axes = tuple(range(1, dim+1))
+        slice_errs = np.abs(zoomed-expected).max(axis=spatial_axes)/np.abs(expected).max(axis=spatial_axes)
+        max_err = slice_errs.max()
+        assert max_err < 1e-6, f"zoomed field mismatch, rel err by slice {slice_errs}"
+        print(f"  [PASS] {dim}-D {waveform_cls.__name__:<12} max rel err vs unscaled ASM {max_err:.2e}")
+
+        save = savedir
+        extent = [-Rx*Lx/2, Rx*Lx/2, -Ry*Lx/2, Ry*Lx/2]   # used by 2-D view only; 1-D scales by wave.Rx
+        poly.view(savedir=str(save / f"{waveform_cls.__name__}_Polychromatic_Scaled_{dim}D"), labels={"extent": extent})
 
 
 if __name__ == "__main__":
@@ -269,3 +311,4 @@ if __name__ == "__main__":
     test_repr_copy_phase()
     test_simple_propagation()
     test_poly_propagation()
+    test_poly_scaled_propagation()
