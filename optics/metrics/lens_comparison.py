@@ -3,7 +3,7 @@ import scipy.constants as const
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import xraylib as xrl
-import os, functools
+import os, functools, json
 from pathlib import Path
 import argparse
 import time, tracemalloc
@@ -19,23 +19,55 @@ parser = argparse.ArgumentParser()
 parser.add_argument("-N", type=int, required=True)
 parser.add_argument("--dim", type=int, choices=[1, 2], default=2,
                     help="simulation dimensionality (1 or 2)")
-parser.add_argument("--precision", type=str, choices=["single", "double"], default="double",
+parser.add_argument("--precision", type=str, choices=["single", "double"], default="single",
                     help="simulation precision (single or double)")
 parser.add_argument("--extend", action="store_true", default=False,
                     help="render 2D focal/lens views as 3D surfaces")
 parser.add_argument("--mark-fwhm", action="store_true", default=True,
                     help="mark FWHM on the central-cut slice plots")
+parser.add_argument("--params", type=str, default=None,
+                    help="saved parameter JSON (see simulation/run.py); skips the prompts")
 
-def run_lens(lens_cls, simulation: SimulationObject, propagator: Propagator, 
-             E: float, f: float, R: float, n: float | complex, 
-             err_func=None, w0=None, zone_height=None):
+def load_lens_params(path):
+    '''
+    Reads the source and lens settings from a saved parameter JSON, in the
+    format written by simulation/run.py.
+    '''
+    with open(path, "r") as file:
+        params = json.load(file)
+    source, lens = params["source"], params["lens"]
+
+    lens_classes = {"Parabolic": XrayParabolicLens, "FZP": FZP, "Kinoform": Kinoform}
+    if lens["type"] not in lens_classes:
+        raise ValueError(f"Lens type {lens['type']!r} is not supported here; use one of {list(lens_classes)}")
+
+    return {
+        "lens_cls": lens_classes[lens["type"]],
+        "name": lens.get("name", lens["type"]),
+        "zone_height": lens.get("zone_height"),
+        "display_zones": lens.get("display_zones"),
+        "settings": {
+            "E": source["energy"],
+            "w0": source.get("w0"),
+            "f": lens["f"],
+            "R": lens["R"],
+            "material": lens["material"],
+            "density": lens["density"],
+            "lens_opts": {key: lens[key] for key in ("full", "p") if key in lens},
+        },
+    }
+
+def run_lens(lens_cls, simulation: SimulationObject, propagator: Propagator,
+             E: float, f: float, R: float, n: float | complex,
+             err_func=None, w0=None, zone_height=None, lens_opts=None):
     '''
     Initializes a source, applies a lens of class `lens_cls`, propagates to
     the focal plane, and returns (incident_wave, focal_wave, lens).
-    
+
     `err_func` may be a single callable or a list of callables applied in order.
     Uses a ConstantBeam reference for fair power-in normalization.
     `zone_height` is forwarded to Kinoform/FZP constructors when provided.
+    `lens_opts` holds extra lens constructor arguments (Kinoform `full`, FZP `p`).
     '''
         
     if w0 is None:
@@ -46,6 +78,7 @@ def run_lens(lens_cls, simulation: SimulationObject, propagator: Propagator,
     lens_kwargs = dict(f=f, R=R, n=n, wavelength=source.wavelength, simulation=simulation, z=0)
     if zone_height is not None and lens_cls in (Kinoform, FZP):
         lens_kwargs["zone_height"] = zone_height
+    lens_kwargs.update(lens_opts or {})
     lens = lens_cls(**lens_kwargs) #type: ignore
     
     if err_func is not None:
@@ -256,28 +289,29 @@ def plot_comparison_2D(results, savepath, extend=False, mark_fwhm=False):
     fig.savefig(savepath)
     plt.close(fig)
 
-def test_compare_xray_lenses(lens_dict, N, dim, precision, extend=False, mark_fwhm=False):
+def test_compare_xray_lenses(lens_dict, N, dim, precision, extend=False, mark_fwhm=False,
+                             E=8e3, f=0.1, R=1e-4, material="Si", density=2.329, w0=None):
+    '''
+    E [eV], f [m], R [m], and density [g/cm^3] default to the standard Si setup.
+    '''
     print("Comparing Lenses...")
-    
+
     # Parameters
     Lx = 3e-4
     Ly = Lx if dim == 2 else None
     Lz = 10000
-    E = 8e3        # eV
-    f = 0.1        # m
-    R = 1e-4       # m
     # f = 1.0        # m
     # R = 5e-5       # m
-    
-    n = xrl.Refractive_Index("Si", E / 1000, 2.329)
-    
+
+    n = xrl.Refractive_Index(material, E / 1000, density)
+
     print(f"Refractive index n = {n}")
     print(f"Energy = {E} eV, f = {f} m, R = {R} m")
     
     ## Initialize box sizes
-    ref_sim = SimulationObject(Lx=Lx, Nx=N, Lz=Lz, Ly=Ly, Ny=1024, precision="double")
+    ref_sim = SimulationObject(Lx=Lx, Nx=N//2, Lz=Lz, Ly=Ly, Ny=N//2, precision="double")
     ref_source, ref_lens, P_in = run_lens(
-        Kinoform, ref_sim, AngularSpectrum(ref_sim), E, f, R, n
+        Kinoform, ref_sim, AngularSpectrum(ref_sim), E, f, R, n, w0=w0
     )
     
     ## Initialize zoom parameters
@@ -310,9 +344,10 @@ def test_compare_xray_lenses(lens_dict, N, dim, precision, extend=False, mark_fw
         entry = lens_dict[name]
         cls, err_func, zone_height = entry[0], entry[1], entry[2]
         display_zones = entry[3] if len(entry) > 3 else None
+        lens_opts = entry[4] if len(entry) > 4 else None
         source, lens, P_in = run_lens(
             cls, sim, propagator, E, f, R, n,
-            err_func=err_func, zone_height=zone_height
+            err_func=err_func, w0=w0, zone_height=zone_height, lens_opts=lens_opts
         )
         m = collect_metrics(P_in, source, lens, name)
         metrics.append(m)
@@ -478,10 +513,18 @@ def take_user_input():
         
 def main():
     args = parser.parse_args()
-    lenses = take_user_input()
+    if args.params:
+        saved = load_lens_params(args.params)
+        settings = saved["settings"]
+        lens_opts = settings.pop("lens_opts")
+        lenses = {saved["name"]: [saved["lens_cls"], None, saved["zone_height"], saved["display_zones"], lens_opts]}
+    else:
+        lenses = take_user_input()
+        settings = {}
     # print(lenses)
     time_s = time.time(); tracemalloc.start()
-    test_compare_xray_lenses(lenses, args.N, args.dim, args.precision, extend=args.extend, mark_fwhm=args.mark_fwhm)
+    test_compare_xray_lenses(lenses, args.N, args.dim, args.precision, extend=args.extend, mark_fwhm=args.mark_fwhm,
+                             **settings)
     time_e = time.time(); _, peak = tracemalloc.get_traced_memory()
     
     print(f"Simulation took {time_e-time_s:3f} seconds, with peak memory usage of {peak/10**9:3f} GB.")
