@@ -63,9 +63,6 @@ def test_init_shapes():
             for waveform_cls, kwargs in _beams():
                 sim = _make_sim(dim, precision)
                 wave = _make_poly(waveform_cls, energies, weights, sim, z=0, **kwargs)
-                
-                print(wave.energy.shape, wave.wavelength.shape,  flush=True)
-                quit()
                 spatial = (N,) if dim == 1 else (N_2D, N_2D)
                 spec_shape = (N_SPEC,) + (1,)*dim
 

@@ -253,7 +253,7 @@ class PolychromaticWaveform(Waveform):
         self.waveform_cls = waveform_cls
         func = functools.partial(waveform_cls.func, self)   # borrow GaussianBeam/ConstantBeam profile
         
-        super().__init__(energies.reshape(self.spec_shape), simulation, z, func=func, **kwargs)
+        super().__init__(self.energy.reshape(self.spec_shape), simulation, z, func=func, **kwargs)
         # self.energy = energies.reshape(self.spec_shape)
         self.wavelength = self.wavelength.reshape(self.spec_shape)
         self.field *= np.sqrt(self.weights).reshape(self.spec_shape).astype(simulation.complex_dtype)

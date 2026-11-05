@@ -1,5 +1,5 @@
 import numpy as np
-import xraylib
+import xraylib as xrl
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 from matplotlib import cm
@@ -217,7 +217,7 @@ class Object():
                     vmax = data.max() if data.max() > 0 else 1.0
                     lnorm = colors.Normalize(vmin=vmin, vmax=vmax)
                     norm = lnorm
-                    if phase:
+                    if phase is not None:
                         lv = lnorm(data)
                         v = np.clip(lv.filled(0) if hasattr(lv, "filled") else lv, 0, 1)
                         hue = (phase + np.pi)/ (2*np.pi)
@@ -376,8 +376,7 @@ class Waveform(Object):
     def propagate(self, dz, propagator: Propagator):
         if dz+self.z > self.simulation.Lz: 
             print(f"Propagation must stay within box length {self.simulation.Lz}")
-            diff = dz+self.z - self.simulation.Lz
-            dz = np.round(diff,10)
+            dz = np.round(self.simulation.Lz - self.z, 10)
             print(f"Propagating for {dz}.")
         propagation_func = propagator.propagator
 
@@ -416,14 +415,19 @@ class Aperture(Object):
         
 class ThinLens(Aperture):
     
-    def __init__(self, f, aperture_func, simulation: SimulationObject, z:float, thickness_func=None, n=1.0, **kwargs):
+    def __init__(self, f, aperture_func, simulation: SimulationObject, z:float, thickness_func=None, n=1.0, material="", density=0.0, **kwargs):
         '''
         args
         - f: focal length [m]
         - aperture_func: lens aperture function over grid
         '''
+        
+        # lens specs
         self.f = f
         self.n = n
+        self.material = material
+        self.density = density
+        
         self.orig_aperture = aperture_func
         if thickness_func is not None: self.thickness = thickness_func
         
@@ -439,6 +443,17 @@ class ThinLens(Aperture):
         return f"Lens located at {self.center} with focal length {self.f}"
     
     ## lens profile
+    def init_refractive_index(self, source: Waveform):
+        n_func = lambda E: xrl.Refractive_Index(self.material, E / 1000, self.density) # E [eV]
+        try: 
+            if not isinstance(source.energy, np.ndarray): n = n_func(source.energy)
+            else: n =  np.array([n_func(E) for E in np.ravel(source.energy)]) # energy is stored as (N_lambda, 1, ...)
+        except Exception as e:
+            raise Exception("Undefined or invalid lens material and/or density!") from e
+
+        self.n = n
+        self._transmittance_initialized = False # any cached transmittance used the old n
+
     def thickness(self, *args, **kwargs):
         raise NotImplementedError("Lens must have a thickness profile!")
     
@@ -463,26 +478,44 @@ class ThinLens(Aperture):
         self.mutated = True
         
     ## transmittance features
-    def transmittance(self, wavelength):
+    def transmittance(self, wavelength: float | np.ndarray):
         k = 2*const.pi/wavelength
         n = self.n
+        
         # phase evaluated in float64, cast to storage precision after exp
-        t = np.exp(1j*k*(n-1.)*np.asarray(self.profile, dtype=np.float64))
+        thickness = np.asarray(self.profile, dtype=np.float64)
+        if isinstance(wavelength, np.ndarray):
+            assert isinstance(n, np.ndarray) and isinstance(k, np.ndarray) 
+            # polychromatic (N_lambda, 1)
+            k = k.reshape((-1,)+(1,)*thickness.ndim)
+            n = n.reshape((-1,)+(1,)*thickness.ndim) 
+            
+            t = np.exp(1j*k*(n-1.)*thickness)
+        else:
+            t = np.exp(1j*k*(n-1.)*thickness)
+
         return t.astype(self.simulation.complex_dtype)
 
     ## implements lens phase screen
     def init_transmittance(self, wave: Waveform):
         assert(not self._transmittance_initialized)
-        t_l = self.transmittance
+        transmittance = self.transmittance
         base = self.aperture_field.astype(self.simulation.complex_dtype)
-        self.field = base * t_l(wave.wavelength)
-        self._transmittance_initialized = True
+        t_l = transmittance(wave.wavelength)
         
+        if base.ndim < t_l.ndim: base = base[None]
+        
+        self.field = base * t_l
+        self._transmittance_wavelength = wave.wavelength
+        self._transmittance_initialized = True
+
     def transform(self, wave: Waveform):
         if not self._transmittance_initialized:
             print("Warning: Transmittance was not initialized...")
             self.init_transmittance(wave)
             self._transmittance_initialized = True
+        elif not np.array_equal(self._transmittance_wavelength, wave.wavelength):
+            raise Exception("Lens transmittance was initialized for a different wavelength/spectrum than this wave.")
 
         wave.field = wave.field.astype(self.simulation.complex_dtype, copy=False)*self.field
     

@@ -227,7 +227,8 @@ def scaled_angular_spectrum_method(wave: Waveform, dz: float, n: float=1., Rx=1.
         assert isinstance(mfx, np.ndarray) and isinstance(mfy, np.ndarray)
         x_out = (2*const.pi * Rx * mfx.ravel() / Nx).astype(real_dtype)
         y_out = (2*const.pi * Ry * mfy.ravel() / Ny).astype(real_dtype)
-        Uz = nufft.nufft2d2(x_out, y_out, Az, eps=eps, isign=1).reshape(-1, Ny, Nx)/(Nx * Ny)
+        # finufft pairs its first coordinate with the first mode axis; Az is (..., Ny, Nx)
+        Uz = nufft.nufft2d2(y_out, x_out, Az, eps=eps, isign=1).reshape(-1, Ny, Nx)/(Nx * Ny)
         wave.Rx, wave.Ry = Rx, Ry
         
     return Uz if is_poly else Uz[0]
