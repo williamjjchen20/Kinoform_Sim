@@ -534,7 +534,14 @@ class ThinLens(Aperture):
     def phase(self):
         field = np.where(self.field != 0, self.field, 0.)
         return np.angle(field)
-        
+
+    def view(self, ax=None, *args, **kwargs):
+        # polychromatic transmittance is (N_lambda, ...): no single phase to plot
+        if self.field.ndim > self.dim:
+            print("Skipping lens view: transmittance is polychromatic.")
+            return ax
+        return super().view(ax, *args, **kwargs)
+
     @abstractmethod
     def plot_profile(self):
         raise NotImplementedError

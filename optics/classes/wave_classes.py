@@ -249,7 +249,12 @@ class PolychromaticWaveform(Waveform):
     def __init__(self, energies, weights, waveform_cls, simulation, z, **kwargs):
         self.spec_shape = (-1,) + (1,)*simulation.dim # tuple shaped with first dimension as spectrum count
         self.energy = np.array(energies)
-        self.weights = np.asarray(weights, dtype=float) / np.sum(weights)
+        weights = np.asarray(weights, dtype=float)
+        if weights.shape != (self.energy.size,):
+            raise ValueError(f"weights must have shape ({self.energy.size},) to match energies, got {weights.shape}")
+        if not np.all(np.isfinite(weights)) or np.any(weights < 0) or np.sum(weights) <= 0:
+            raise ValueError("weights must be finite and non-negative, with a positive sum")
+        self.weights = weights / np.sum(weights)
         self.waveform_cls = waveform_cls
         func = functools.partial(waveform_cls.func, self)   # borrow GaussianBeam/ConstantBeam profile
         
