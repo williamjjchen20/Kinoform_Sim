@@ -270,8 +270,13 @@ class OpticalLens(CircularLens):
         t_parabolic = self.t0-r_squared/2*(1/self.R1 - 1/self.R2)
     
         return t_parabolic
-
-class XrayParabolicLens(CircularLens):
+    
+class XrayLens(CircularLens):
+    def __init__(self, f, R, n, simulation: SimulationObject, z, **kwargs):
+            self.delta = (1.-n).real
+            super().__init__(f, R, n, simulation, z, **kwargs)
+    
+class XrayParabolicLens(XrayLens):
     def __init__(self, f, R, n, simulation: SimulationObject, z, **kwargs):
         self.delta = (1.-n).real
         super().__init__(f, R, n, simulation, z,**kwargs)
@@ -290,7 +295,7 @@ class XrayParabolicLens(CircularLens):
     
         return t_parabolic
     
-class PhaseWrappedLens(CircularLens):
+class PhaseWrappedLens(XrayLens):
     '''
     Shared base for phase-wrapped diffractive lenses (FZP, Kinoform).
 
@@ -434,10 +439,7 @@ class Kinoform(PhaseWrappedLens):
         if R is None: R = R_new
         super().reshape(R=R)
         self.mutated = True
-    
-class CompoundLens(ThinLens):
-    pass
-    
+        
 class LensErrors():
     """Fabrication error models for diffractive lenses (:class:`Kinoform`, :class:`FZP`).
 
