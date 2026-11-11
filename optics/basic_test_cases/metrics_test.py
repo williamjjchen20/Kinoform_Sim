@@ -12,10 +12,10 @@ from ..classes import *
 
 
 script_dir = Path(__file__).resolve().parent
-savedir = (script_dir / "../test_figs/metrics").resolve()
+savedir = (script_dir / "test_figs" / "metrics_test").resolve()
 savedir.mkdir(parents=True, exist_ok=True)
 
-def run_lens(lens_cls, label, simulation, propagator, E, f, R, n, w0=None, init_lens=True):
+def run_lens(lens_cls, label, simulation, propagator, E, f, R, n, w0=None):
     '''
     Initializes a source, applies a lens of class `lens_cls`, propagates to
     the focal plane, and returns (incident_wave, focal_wave, lens).
@@ -28,7 +28,6 @@ def run_lens(lens_cls, label, simulation, propagator, E, f, R, n, w0=None, init_
         source = GaussianBeam(energy=E, simulation=simulation, z=0, w0=w0)
 
     lens = lens_cls(f=f, R=R, n=n, wavelength=source.wavelength, simulation=simulation, z=0)
-    if init_lens: lens.init_transmittance(source)
 
     # Sampling check
     f_s = source.wavelength * np.abs(lens.f) / (2 * lens.R)
@@ -88,9 +87,9 @@ def plot_comparison(parabolic, kinoform, savepath):
     extent = [-Lx/2, Lx/2, -Ly/2, Ly/2]
 
     # Lens phase
-    ax[0, 0].imshow(pf_lens.angle(), cmap="twilight", extent=extent)
+    ax[0, 0].imshow(pf_lens.phase(), cmap="twilight", extent=extent)
     ax[0, 0].set(title="Parabolic Lens Phase", xlabel="x [m]", ylabel="y [m]")
-    ax[1, 0].imshow(kf_lens.angle(), cmap="twilight", extent=extent)
+    ax[1, 0].imshow(kf_lens.phase(), cmap="twilight", extent=extent)
     ax[1, 0].set(title="Kinoform Phase", xlabel="x [m]", ylabel="y [m]")
 
     # Focal-plane intensity (log scale)
@@ -225,7 +224,7 @@ def test_FWHM():
           f"dx={dx:.3e} m, samples_per_FWHM~{airy_half_max/dx:.2f}")
 
     src, lens, _ = run_lens(XrayParabolicLens, "Airy", sim_airy, propagator,
-                            E, f, R, n, init_lens=True)
+                            E, f, R, n)
     # Tolerance: sample spacing alone limits accuracy to ~dx/expected
     airy_tol = 5e-2
     rel = abs(FWHM(src) - airy_half_max) / airy_half_max

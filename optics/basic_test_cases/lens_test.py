@@ -10,7 +10,8 @@ from ..classes import *
 from ..metrics import *
 
 script_dir = Path(__file__).resolve().parent
-savedir = (script_dir / "../test_figs/lens_test").resolve()
+savedir = (script_dir / "test_figs" / "lens_test").resolve()
+savedir.mkdir(parents=True, exist_ok=True)
 
 def test_standard_lens_1D():
     print("Testing Standard Lens (1D)...")
@@ -21,7 +22,6 @@ def test_standard_lens_1D():
 
     source = GaussianBeam(energy=1.96, simulation=simulation, z=0, w0=Lx/2)
     lens = OpticalLens(R=0.01, n=1.05, t0=0., R1=0.5, R2=-0.5, simulation=simulation, z=0.1)
-    lens.init_transmittance(source)
 
     # Voelz and Roggemann (2009) sampling criterion
     f_s = source.wavelength*np.abs(lens.f)/(2*lens.R)
@@ -75,7 +75,6 @@ def test_standard_lens_2D():
 
     source = GaussianBeam(energy=1.96, simulation=simulation, z=0, w0=Lx/4)
     lens = OpticalLens(R=0.01, n=1.05, t0=0., R1=0.5, R2=-0.5, simulation=simulation, z=0.1)
-    lens.init_transmittance(source)
 
     # Voelz and Roggemann (2009) sampling criterion to avoid aliasing
     f_s = source.wavelength*np.abs(lens.f)/(2*lens.R)
@@ -146,7 +145,6 @@ def test_lens_xray():
     source = ConstantBeam(energy=E, simulation=simulation, z=0)
     lens = XrayParabolicLens(f=f, R=R, n=n, simulation=simulation, z=0)
     lens.plot_profile(ax=plt.figure().gca(), savedir=str(savedir))
-    lens.init_transmittance(source)
 
     # Voelz and Roggemann (2009) sampling criterion to avoid aliasing
     f_s = source.wavelength*np.abs(lens.f)/(2*lens.R)
@@ -214,7 +212,6 @@ def test_kinoform():
     source = ConstantBeam(energy=E, simulation=simulation, z=0)
     lens = Kinoform(wavelength=source.wavelength, f=f, R=R, n=n, simulation=simulation, z=0)
     lens.plot_profile(ax=plt.figure().gca(), savedir=str(savedir))
-    lens.init_transmittance(source)
 
     # Voelz and Roggemann (2009) sampling criterion to avoid aliasing
     f_s = source.wavelength*np.abs(lens.f)/(2*lens.R)
@@ -282,7 +279,6 @@ def test_FZP():
     lens = FZP(wavelength=source.wavelength, f=f, R=R, n=n, simulation=simulation, z=0, p=2, positive=True)
 
     lens.plot_profile(ax=plt.figure().gca(), savedir=str(savedir))
-    lens.init_transmittance(source)
     
     # Voelz and Roggemann (2009) sampling criterion to avoid aliasing
     f_s = source.wavelength*np.abs(lens.f)/(2*lens.R)

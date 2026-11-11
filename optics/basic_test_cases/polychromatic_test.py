@@ -1,5 +1,7 @@
 import numpy as np
 import scipy.constants as const
+import matplotlib.pyplot as plt
+import xraylib as xrl
 import os, sys
 from pathlib import Path
 
@@ -8,7 +10,8 @@ from ..metrics import *
 from ..propagators import *
 
 script_dir = Path(__file__).resolve().parent
-savedir = (script_dir / "./test_figs").resolve()
+savedir = (script_dir / "test_figs" / "polychromatic_test").resolve()
+savedir.mkdir(parents=True, exist_ok=True)
 
 JOULE_TO_EV = 1/const.e
 
@@ -298,6 +301,108 @@ def test_poly_scaled_propagation():
         poly.view(savedir=str(save / f"{waveform_cls.__name__}_Polychromatic_Scaled_{dim}D"), labels={"extent": extent})
 
 
+def test_lens_transform():
+    print("="*60)
+    print("Lens + propagation: each slice == sqrt(w_i) * monochromatic run at E_i")
+    print("="*60)
+
+    f, lens_R, n_design = 0.1, 5e-5, 1 - 6e-6 + 0j
+    dz = 1e-3
+    energies, weights = gaussian_spectrum(E0, BW_MULTILAYER, N_SPEC)
+    w_norm = weights/np.sum(weights)
+
+    def make_lens(sim):
+        return XrayParabolicLens(f=f, R=lens_R, n=n_design, simulation=sim, z=0, material="Si", density=2.329)
+
+    def through_lens(source, sim, propagator_cls, **prop_kwargs):
+        lens = make_lens(sim)
+        lens.init_refractive_index(source)
+        source.filter(lens)
+        lens.transform(source)
+        source.propagate(dz, propagator_cls(sim, **prop_kwargs))
+        return lens
+
+    for dim in (1, 2):
+        for propagator_cls, prop_kwargs in ((AngularSpectrum, {}), (ScaledAngularSpectrum, {"Rx": 0.5, "Ry": 0.5})):
+            sim_poly = _make_sim(dim)
+            poly = _make_poly(ConstantBeam, energies, weights, sim_poly, z=0)
+            lens = through_lens(poly, sim_poly, propagator_cls, **prop_kwargs)
+
+            max_err = 0.
+            for i, (E, w) in enumerate(zip(energies, w_norm)):
+                sim_mono = _make_sim(dim)
+                mono = _make_mono(ConstantBeam, E, sim_mono, z=0)
+                through_lens(mono, sim_mono, propagator_cls, **prop_kwargs)
+                ref = np.sqrt(w)*mono.field
+                max_err = max(max_err, np.abs(poly.field[i]-ref).max()/np.abs(ref).max())
+            assert max_err < 1e-10, f"slice mismatch, max rel err {max_err:.2e}"
+            print(f"  [PASS] {dim}-D {propagator_cls.__name__:<22} max rel err {max_err:.2e}")
+
+            # no single phase to plot, and the lens stays tied to this spectrum
+            assert lens.view() is None
+            try:
+                lens.transform(_make_mono(ConstantBeam, E0, _make_sim(dim), z=0))
+            except Exception as e:
+                print(f"  [PASS] mismatched wave rejected: {e}")
+            else:
+                raise AssertionError("lens accepted a wave with a different spectrum")
+
+
+def test_lens_focus():
+    print("="*60)
+    print("Polychromatic beam at the lens focal plane vs monochromatic beam at E0")
+    print("="*60)
+
+    f, lens_R, material, density = 0.1, 5e-5, "Si", 2.329
+    n_design = xrl.Refractive_Index(material, E0/1000, density)   # E0 focuses at exactly f
+    N_focus = 2048      # the lens phase needs dx < lambda*f/(2R) ~ 1.5e-7 m, so N_2D=512 aliases
+    energies, weights = gaussian_spectrum(E0, BW_MULTILAYER, N_SPEC)
+
+    # Zoom onto the focus: wide enough for the diffraction-limited spot and the
+    # chromatic blur of the outer energies (f scales as E^2, so df/f ~ 2*bandwidth)
+    wavelength0 = (const.h*const.c)*JOULE_TO_EV/E0
+    spot = wavelength0*f/(2*lens_R)
+    blur = 2*lens_R*2*BW_MULTILAYER
+    Rx = Ry = min(max(10*spot, 3*blur)/Lx, 1.)
+    extent = [-Rx*Lx/2, Rx*Lx/2, -Ry*Lx/2, Ry*Lx/2]   # used by 2-D view only; 1-D scales by wave.Rx
+
+    def make_sim(dim):
+        if dim == 1:
+            return SimulationObject(Lx=Lx, Nx=N_focus, Lz=Lz)
+        return SimulationObject(Lx=Lx, Ly=Lx, Nx=N_focus, Ny=N_focus, Lz=Lz)
+
+    def focus(source, sim):
+        lens = XrayParabolicLens(f=f, R=lens_R, n=n_design, simulation=sim, z=0, material=material, density=density)
+        lens.init_refractive_index(source)
+        source.filter(lens)
+        lens.transform(source)
+        source.propagate(f, ScaledAngularSpectrum(sim, Rx=Rx, Ry=Ry))
+
+    for dim in (1, 2):
+        sim_poly, sim_mono = make_sim(dim), make_sim(dim)
+        poly = _make_poly(ConstantBeam, energies, weights, sim_poly, z=0)
+        mono = _make_mono(ConstantBeam, E0, sim_mono, z=0)
+        focus(poly, sim_poly)
+        focus(mono, sim_mono)
+
+        # equal incident power (weights sum to 1), so chromatic blur can only lower the peak
+        I_poly, I_mono = poly.intensity().max(), mono.intensity().max()
+        assert np.all(np.isfinite(poly.field))
+        assert I_mono > 1., f"monochromatic beam did not focus (peak I = {I_mono:.3e})"
+        assert I_poly < I_mono, f"polychromatic peak {I_poly:.3e} exceeds monochromatic {I_mono:.3e}"
+        print(f"  [PASS] {dim}-D peak gain mono {I_mono:.3e}, poly {I_poly:.3e} (ratio {I_poly/I_mono:.3f})")
+
+        fig, axes = plt.subplots(1, 2, figsize=(11, 4.5), constrained_layout=True)
+        for ax, wave, name in ((axes[0], mono, f"Monochromatic {E0/1e3:g} keV"),
+                               (axes[1], poly, f"Polychromatic {BW_MULTILAYER*100:g}% FWHM, {N_SPEC} samples")):
+            wave.view(ax=ax, labels={"extent": extent}, show_cbar=(dim == 2))
+            ax.set_title(f"{name} at z = f = {f} m")
+        out = savedir / f"Lens_Polychromatic_Focus_{dim}D.png"
+        fig.savefig(out)
+        plt.close(fig)
+        print(f"  saved {out}")
+
+
 if __name__ == "__main__":
     test_init_shapes()
     test_component_equivalence()
@@ -309,3 +414,5 @@ if __name__ == "__main__":
     test_simple_propagation()
     test_poly_propagation()
     test_poly_scaled_propagation()
+    test_lens_transform()
+    test_lens_focus()

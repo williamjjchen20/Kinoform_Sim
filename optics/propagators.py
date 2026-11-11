@@ -8,7 +8,7 @@ import finufft as nufft
 from numba import njit
 
 pyfftw.interfaces.cache.enable()   # plan cache persists across calls
-from .classes import SimulationObject, Waveform, PolychromaticWaveform, Propagator
+from .classes import SimulationObject, Waveform, Propagator
 
 class AngularSpectrum(Propagator):
     def __init__(self, simulation):
@@ -37,49 +37,45 @@ class AngularSpectrum(Propagator):
     
 class ScaledAngularSpectrum(Propagator):
     def __init__(self, simulation, Rx=1., Ry=1.):
+        self.Rx, self.Ry = Rx, Ry
         super().__init__(scaled_angular_spectrum_method, simulation=simulation, Rx=Rx, Ry=Ry)
-    
-def angular_spectrum_method(wave: Waveform, dz: float, n:float=1.) -> np.ndarray:
+
+    def update_wave(self, wave: Waveform):
+        wave.Rx = self.Rx
+        if wave.dim == 2: wave.Ry = self.Ry
+
+def angular_spectrum_method(U: np.ndarray, wavelength: float, simulation: SimulationObject, dz: float, n:float=1.) -> np.ndarray:
     '''
-    Calculates the propagation of disturbance from initial wavefunction U(0) to U(z) in the specified dimensions. 
-    
-    This function implements the ASM with a FFT and IFFT. 
+    Calculates the propagation of disturbance from initial wavefunction U(0) to U(z) in the specified dimensions.
+
+    This function implements the ASM with a FFT and IFFT.
     It is better suited for near-field propagation in the Rayleight limit of z < 2*D^2/lambda but adopts the bandwidth limits from
     (Matsushima and Shimobaba, 2009) to adopt greater paraxial far field accuracy.
 
-    
+
     Arguments
-    - U: Initial wavefunction 
-    - z: Propagation length
-    - lambda_: wavelength
-    
+    - U: Initial wavefunction at one wavelength
+    - wavelength: wavelength
+    - simulation: simulation box holding the grid
+    - dz: Propagation length
+
     Optional Arguments
     - n: refractive index
-    - dim: spatial dimension count (1, 2)
-    
+
     Return
-    - Uz: propagated wavefunction at distance z
+    - Uz: propagated wavefunction at distance dz
     '''
-    
+
     # Parameters
-    simulation = wave.simulation
-    U = wave.field.astype(simulation.complex_dtype, copy=False)
-    wavelength = wave.wavelength
-    
-    is_poly = isinstance(wave, PolychromaticWaveform)
-    if not is_poly: U = U[None]; wavelength = np.array(wavelength)[None]
-    dim = wave.dim
-    axes = tuple(range(-dim, 0))
-    
-    # Check for spectral conditions (polychromatic beam
-    
+    U = U.astype(simulation.complex_dtype, copy=False)
+    dim = simulation.dim
+
     Lx, Ly = simulation.Lx, simulation.Ly
     Nx, Ny = simulation.Nx, simulation.Ny
     dx, dy = simulation.dx, simulation.dy
-    
+
     # Set input waveform to nyquist ordering (0-centered)
-    assert isinstance(U, np.ndarray)
-    U0 = np.fft.fftshift(U, axes=axes)
+    U0 = np.fft.fftshift(U)
     # Calculate the intiial angular spectrum as a FT of the initial wavefunction
     if dim == 1:
         fft = fft_lib.fft
@@ -123,10 +119,9 @@ def angular_spectrum_method(wave: Waveform, dz: float, n:float=1.) -> np.ndarray
     H = H.astype(simulation.complex_dtype)
     
     # Calculate the propagated waveform via an inverse FT and shift back to standard ordering
-    Uz = np.fft.ifftshift(ifft(A0 * H, workers=-1), axes=axes)   # spatial axes only: keep spectral ordering
-    return Uz if is_poly else Uz[0]
-    
-def scaled_angular_spectrum_method(wave: Waveform, dz: float, n: float=1., Rx=1., Ry=1.) -> np.ndarray:
+    return np.fft.ifftshift(ifft(A0 * H, workers=-1))
+
+def scaled_angular_spectrum_method(U: np.ndarray, wavelength: float, simulation: SimulationObject, dz: float, n: float=1., Rx=1., Ry=1.) -> np.ndarray:
     '''
     Scaled angular spectrum method based on Shimobaba et al. (2012), Eq. (3).
     
@@ -135,23 +130,19 @@ def scaled_angular_spectrum_method(wave: Waveform, dz: float, n: float=1., Rx=1.
     output grid via a type-2 NUFFT.
 
     Arguments
-    - wave: Waveform object
+    - U: Initial wavefunction at one wavelength
+    - wavelength: wavelength
+    - simulation: simulation box holding the grid
     - dz: propagation distance
     - n: refractive index
     - Rx, Ry: magnification factors (output grid = R * input grid)
 
     Return
-    - Uz: propagated wavefunction at distance z
+    - Uz: propagated wavefunction at distance dz
     '''
-    
-    simulation = wave.simulation
-    U = wave.field.astype(simulation.complex_dtype, copy=False)
-    wavelength = wave.wavelength
-    
-    is_poly = isinstance(wave, PolychromaticWaveform)
-    if not is_poly: U = U[None]; wavelength = np.array(wavelength)[None]
-    dim = wave.dim
-    axes = tuple(range(-dim, 0))
+
+    U = U.astype(simulation.complex_dtype, copy=False)
+    dim = simulation.dim
 
     Lx, Ly = simulation.Lx, simulation.Ly
     Nx, Ny = simulation.Nx, simulation.Ny
@@ -160,7 +151,7 @@ def scaled_angular_spectrum_method(wave: Waveform, dz: float, n: float=1., Rx=1.
     assert Rx <= 1 and Ry <= 1 # Zoom in condition
     
     # Set input waveform to nyquist ordering (0-centered)
-    U0 = np.fft.ifftshift(U, axes=axes)
+    U0 = np.fft.ifftshift(U)
     K = 2*const.pi*n/wavelength
     if dim == 1:
         fft = np.fft.fft
@@ -207,7 +198,7 @@ def scaled_angular_spectrum_method(wave: Waveform, dz: float, n: float=1., Rx=1.
         band_mask &= np.abs(ky) <= ky_max
     
         
-    A0 = np.fft.ifftshift(fft(U0), axes=axes)
+    A0 = np.fft.ifftshift(fft(U0))
     H = np.exp(1j*kz*dz)
     H[K_c > K**2] = 0
     H[~band_mask] = 0
@@ -221,15 +212,13 @@ def scaled_angular_spectrum_method(wave: Waveform, dz: float, n: float=1., Rx=1.
         assert isinstance(mf, np.ndarray)
         x_out = (2*const.pi*Rx*mf/Nx).astype(real_dtype)
         Uz = nufft.nufft1d2(x_out, Az, eps=eps, isign=1)/Nx
-        wave.Rx = Rx
     else: # dim == 2:
         assert Ny is not None
         assert isinstance(mfx, np.ndarray) and isinstance(mfy, np.ndarray)
         x_out = (2*const.pi * Rx * mfx.ravel() / Nx).astype(real_dtype)
         y_out = (2*const.pi * Ry * mfy.ravel() / Ny).astype(real_dtype)
-        # finufft pairs its first coordinate with the first mode axis; Az is (..., Ny, Nx)
-        Uz = nufft.nufft2d2(y_out, x_out, Az, eps=eps, isign=1).reshape(-1, Ny, Nx)/(Nx * Ny)
-        wave.Rx, wave.Ry = Rx, Ry
-        
-    return Uz if is_poly else Uz[0]
+        # finufft pairs its first coordinate with the first mode axis; Az is (Ny, Nx)
+        Uz = nufft.nufft2d2(y_out, x_out, Az, eps=eps, isign=1).reshape(Ny, Nx)/(Nx * Ny)
+
+    return Uz
     

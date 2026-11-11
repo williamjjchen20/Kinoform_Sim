@@ -12,7 +12,7 @@ from ..metrics import *
 F = WaveFunctions()
 
 script_dir = Path(__file__).resolve().parent
-savedir = (script_dir / "../test_figs/physics_test").resolve()
+savedir = (script_dir / "test_figs" / "physics_test").resolve()
 savedir.mkdir(parents=True, exist_ok=True)
 
 
@@ -71,7 +71,6 @@ def test_power_conservation_kinoform():
     _report("Incident (pre-lens)", source, P_in)
 
 
-    lens.init_transmittance(source)
     lens.transform(source)
     _report("Post-lens (z=0+)", source, P_in)
 

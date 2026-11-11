@@ -9,7 +9,8 @@ from ..propagators import *
 from ..classes import *
 
 script_dir = Path(__file__).resolve().parent
-savedir = (script_dir / "../test_figs/diffraction_test").resolve()
+savedir = (script_dir / "test_figs" / "diffraction_test").resolve()
+savedir.mkdir(parents=True, exist_ok=True)
 
 A = DiffractionPatterns()
 

@@ -6,7 +6,7 @@ from pathlib import Path
 from ..classes import *
 
 script_dir = Path(__file__).resolve().parent
-savedir = (script_dir / "../test_figs/error_test").resolve()
+savedir = (script_dir / "test_figs" / "error_test").resolve()
 savedir.mkdir(parents=True, exist_ok=True)
 
 def test_noop():
@@ -93,7 +93,7 @@ def test_kinoform_random_etch():
                     simulation=simulation, z=0)
 
     print("Zones:", lens.zones)
-    lens.add_error(LensErrors.random_etch, max_err=max_err, interval=N//1000, distribution_func="gaussian", seed=67)
+    lens.add_error(LensErrors.random_etch, max_err=max_err, interval=N//1000, distribution="gaussian", seed=67)
 
     fig, ax = plt.subplots(figsize=(8, 4))
     x = lens.grid
