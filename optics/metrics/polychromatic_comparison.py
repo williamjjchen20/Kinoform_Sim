@@ -94,7 +94,6 @@ def run_lens(lens, propagator: Propagator, energies: np.ndarray, weights: np.nda
         source = PolychromaticWaveform(energies, weights, waveform_cls, simulation, 0, w0=w0)
 
     lens.init_refractive_index(source)
-    lens.init_transmittance(source)
 
     # Sampling check: the shortest wavelength is the most demanding
     f_s = np.min(source.wavelength) * np.abs(lens.f) / (2 * lens.R)

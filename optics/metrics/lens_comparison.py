@@ -84,7 +84,6 @@ def run_lens(lens_cls, simulation: SimulationObject, propagator: Propagator,
     if err_func is not None:
         for ef in (err_func if isinstance(err_func, (list, tuple)) else [err_func]):
             lens.add_error(ef)
-    lens.init_transmittance(source)
 
     # Sampling check
     f_s = source.wavelength * np.abs(lens.f) / (2 * lens.R)

@@ -192,7 +192,6 @@ def plot_aberrated_intensity(lens_types: type[Kinoform] | type[FZP] | list[type[
         print(f"[{lens_type.__name__}] Outer zone width: {outer_width}")
         print(f"[{lens_type.__name__}] Outer zone aspect ratio: {h/outer_width}")
 
-        lens.init_transmittance(source)
         source.filter(lens)
         P_in = total_power(source)
         lens.transform(source)
@@ -348,7 +347,6 @@ def plot_sweep_intensity(sweep_name: str, error_func, sweep_param: str,
         lens_ref = lens_cls(wavelength=src_ref.wavelength, f=lf, R=lR,
                             n=n, simulation=sim_ref, z=0)
         src_ref.filter(lens_ref)
-        lens_ref.init_transmittance(src_ref)
         lens_ref.transform(src_ref)
         src_ref.propagate(lens_ref.f, AngularSpectrum(sim_ref))
 
@@ -373,7 +371,6 @@ def plot_sweep_intensity(sweep_name: str, error_func, sweep_param: str,
                             n=n, simulation=sim, z=0)
             src.filter(lens)
             lens.add_error(error_func, **{sweep_param: float(e)}, **error_kwargs)
-            lens.init_transmittance(src)
             lens.transform(src)
             src.propagate(lens.f, AngularSpectrum(sim))
 
@@ -449,7 +446,6 @@ def plot_error_sweep(sweep_name: str, error_func, sweep_param: str,
                             n=n, simulation=sim_ref, z=0)
         src_ref.filter(lens_ref)
         P_in_ref = total_power(src_ref)
-        lens_ref.init_transmittance(src_ref)
         lens_ref.transform(src_ref)
         src_ref.propagate(lens_ref.f, AngularSpectrum(sim_ref))
 
@@ -470,7 +466,6 @@ def plot_error_sweep(sweep_name: str, error_func, sweep_param: str,
             src.filter(lens)
             P_in = total_power(src)
             lens.add_error(error_func, **{sweep_param: float(e)}, **error_kwargs)
-            lens.init_transmittance(src)
             lens.transform(src)
             src.propagate(lens.f, AngularSpectrum(sim))
 

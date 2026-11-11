@@ -104,7 +104,6 @@ def error_metrics(source_factory, lens_factory, propagator, error_func, sweep_pa
             ref_lens : Kinoform = lf(ref_source, wavelength=design_source.wavelength) # type:ignore
             ref_source.filter(ref_lens)
             ref_P_in = total_power(ref_source)
-            ref_lens.init_transmittance(ref_source)
             ref_lens.transform(ref_source)
             ref_source.propagate(ref_lens.f, propagator)
 
@@ -127,7 +126,6 @@ def error_metrics(source_factory, lens_factory, propagator, error_func, sweep_pa
                 P_in = total_power(source)
 
                 lens.add_error(error_func, **{sweep_param: float(e)}, **error_kwargs)
-                lens.init_transmittance(source)
                 lens.transform(source)
                 source.propagate(lens.f, propagator)
 
