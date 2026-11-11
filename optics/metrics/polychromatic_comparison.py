@@ -146,49 +146,36 @@ def print_comparison(metrics_list: list[dict]):
 
 def plot_comparison_1D(results, savepath, mark_fwhm=False):
     '''
-    Plot lens profile and focal-plane intensity for each beam.
+    Plot focal-plane intensity for each beam. In 1D the focal intensity is
+    already the line cut, so there is no separate slice panel.
 
-    `results` maps label -> (focal_wave, lens, labels). One row per beam,
-    two columns: profile, focal intensity.
+    `results` maps label -> (focal_wave, lens, labels). One row per beam.
     '''
     n_beams = len(results)
     if n_beams == 0: raise Exception("No beams added.")
 
-    figw, figh_per_row = 8, 2.0
+    figw, figh_per_row = 5, 2.0
     fig, ax = plt.subplots(
-        nrows=n_beams, ncols=2,
+        nrows=n_beams, ncols=1,
         figsize=(figw, figh_per_row * n_beams),
         squeeze=False,
         constrained_layout=True,
     )
-    # title_fs = min(figw, figh_per_row) * 7.5#max(6, min(figw, figh_per_row) * 1.2)
 
     cmap_cycle = plt.get_cmap("tab10")
 
     for i, (name, (wave, lens, labels)) in enumerate(results.items()):
-        
-        try:
-            zones = labels.get("zones")
-            R_min = lens.zone_locations[-zones]
-        except:
-            R_min = -lens.R
-            
         if i != n_beams-1:
             labels["xlabel"] = None
-            
-        text_scale = 1.2
-            
-        lens_axis =  ax[i, 0]
-        lens.plot_profile(ax=lens_axis, labels=labels, R_min = R_min)
-        title_fs = lens_axis.title.get_fontsize() * text_scale
-        ax[i, 0].title.set_fontsize(title_fs)
 
-        ## Wave intensity full view (no lens phase plot: it differs per energy)
-        wave_axis = ax[i, 1]
+        text_scale = 1.2
+
+        ## Wave intensity full view
+        wave_axis = ax[i, 0]
         wave_labels = dict(labels)
         wave_labels["xlim"] = None
         wave_labels["y_scale_factor"] = 1.
-        wave_labels["title"] = "Focal Intensity"
+        wave_labels["title"] = f"{name} Focal Intensity"
         wave_ax = wave.view(ax=wave_axis, labels=wave_labels, color=cmap_cycle(i%10))
         # wave_ax.set(title=f"{name} Focal Intensity")
         title_fs = wave_axis.title.get_fontsize() * text_scale
@@ -209,45 +196,31 @@ def plot_comparison_1D(results, savepath, mark_fwhm=False):
 
 def plot_comparison_2D(results, savepath, extend=False, mark_fwhm=False):
     '''
-    Plot lens profile, focal-plane intensity, and central line cut for each beam.
+    Plot focal-plane intensity and central line cut for each beam.
 
-    `results` maps label -> (focal_wave, lens, labels). One row per beam, four
-    columns: profile, empty (no lens phase), focal intensity, central cut.
+    `results` maps label -> (focal_wave, lens, labels). One row per beam, two
+    columns: focal intensity, central cut.
     '''
     n_beams = len(results)
     if n_beams == 0: raise Exception("No beams added.")
 
-    figw, figh_per_row = 24, 5.0
+    figw, figh_per_row = 12, 5.0
     fig, ax = plt.subplots(
-        nrows=n_beams, ncols=4,
+        nrows=n_beams, ncols=2,
         figsize=(figw, figh_per_row * n_beams),
         squeeze=False,
         constrained_layout=True,
     )
-    title_fs = max(6, min(figw / 4, figh_per_row) * 3)
+    title_fs = max(6, min(figw / 2, figh_per_row) * 3)
 
     cmap_cycle = plt.get_cmap("tab10")
 
     for i, (name, (wave, lens, labels)) in enumerate(results.items()):
-        # prof_fig, prof_ax = plt.subplots()
-        try:
-            zones = labels.get("zones")
-            R_min = lens.zone_locations[-zones]
-        except:
-            R_min = -lens.R
-            
-        lens.plot_profile(ax=ax[i, 0], labels=labels, R_min=R_min)
-        ax[i, 0].title.set_fontsize(title_fs)
-        
-        ## No lens phase plot: it differs per energy, so that panel stays empty
-        ax[i, 1].set_axis_off()
-
         ## Wave intensity plot: zoom around focal spot
-        # focal_extent = [-lens.R/2, lens.R/2, -lens.R/2, lens.R/2]
         wave_labels = dict(labels)
         wave_labels["xlim"] = None
         wave_labels["ylim"] = None
-        wave_ax = wave.view(ax=ax[i, 2],
+        wave_ax = wave.view(ax=ax[i, 0],
                             labels=wave_labels,
                             _3d=extend, show_cbar=True)
         wave_ax.set(title=f"{name} Focal Intensity")
@@ -264,19 +237,19 @@ def plot_comparison_2D(results, savepath, extend=False, mark_fwhm=False):
         Nx = I.shape[1]
         x = np.linspace(-x, x, Nx)
         cy = I.shape[0] // 2
-        ax[i, 3].plot(x*x_scale_factor, I[cy, :], color=cmap_cycle(i % 10))
-        # ax[i, 3].set(xlim=(-lens.R/2*x_scale_factor, lens.R/2*x_scale_factor))
-        ax[i, 3].set(title=f"{name} Central Cut", xlabel=xlabel, ylim=ylim, ylabel="Intensity", yscale=yscale)
-        ax[i, 3].title.set_fontsize(title_fs)
+        ax[i, 1].plot(x*x_scale_factor, I[cy, :], color=cmap_cycle(i % 10))
+        # ax[i, 1].set(xlim=(-lens.R/2*x_scale_factor, lens.R/2*x_scale_factor))
+        ax[i, 1].set(title=f"{name} Central Cut", xlabel=xlabel, ylim=ylim, ylabel="Intensity", yscale=yscale)
+        ax[i, 1].title.set_fontsize(title_fs)
 
         if mark_fwhm:
             fwhm = labels.get("fwhm")
             if fwhm is not None:
-                ax[i, 3].axhline(0.5 * I[cy, :].max(), color="gray", lw=0.8, ls="--")
-                ax[i, 3].axvspan(-fwhm/2 * x_scale_factor, fwhm/2 * x_scale_factor,
+                ax[i, 1].axhline(0.5 * I[cy, :].max(), color="gray", lw=0.8, ls="--")
+                ax[i, 1].axvspan(-fwhm/2 * x_scale_factor, fwhm/2 * x_scale_factor,
                                  color="crimson", alpha=0.15,
                                  label=f"FWHM={fwhm:.2e} m")
-                ax[i, 3].legend(fontsize=8)
+                ax[i, 1].legend(fontsize=8)
 
     fig.savefig(savepath)
     plt.close(fig)
