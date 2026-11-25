@@ -21,10 +21,7 @@ PRECISIONS = {
 class SimulationObject:
 
     def __init__(self, Lx, Nx, Lz, Ly=None, Ny=None, n=1, precision="double"):
-        '''
-        precision: "single" or "double". Sets the storage dtype of fields and
-        transfer functions. Grids and phase arguments are always float64.
-        '''
+        
         if Ly is None or Ny is None:
             self.dim = 1
         elif Ly is not None and Ny is not None:
@@ -86,22 +83,23 @@ class SimulationObject:
             print("No collisions detected. Proceeding...")
             return
         
-    def add_object(self, object):
+    def add_object(self, object, register=True):
         # Create check for object collisions
-        match object:
-            case Waveform():
-                # if len(self.objects["sources"]) == 1: raise Exception("Only one source")
-                self.objects["source"] = object
-            case ThinLens():
-                lenses = self.objects.get("lens", [])
-                lenses.append(object)
-                self.objects["lens"] = lenses
-            case Aperture():
-                apertures = self.objects.get("aperture", [])
-                apertures.append(object)
-                self.objects["aperture"] = apertures
-            case _:
-                raise Exception("Unknown Object")
+        if register:
+            match object:
+                case Waveform():
+                    # if len(self.objects["sources"]) == 1: raise Exception("Only one source")
+                    self.objects["source"] = object
+                case ThinLens():
+                    lenses = self.objects.get("lens", [])
+                    lenses.append(object)
+                    self.objects["lens"] = lenses
+                case Aperture():
+                    apertures = self.objects.get("aperture", [])
+                    apertures.append(object)
+                    self.objects["aperture"] = apertures
+                case _:
+                    raise Exception("Unknown Object")
         self.zs.append(object.z)
         
     def add_propagator(self, propagator):
@@ -132,12 +130,16 @@ class Propagator():
         self.validated=False
         simulation.add_propagator(self)
 
+    def update_wave(self, wave):
+        '''Record anything the propagation changes on the wave, such as a scaled output grid.'''
+        pass
+
     @abstractmethod
     def _conditions(self):
         pass
             
 class Object():
-    def __init__(self, simulation: SimulationObject, z: float, func=None, **kwargs):
+    def __init__(self, simulation: SimulationObject, z: float, func=None, register=False, **kwargs):
         # Associate object with provided simulation suite
         self.kwargs = kwargs
         self.simulation = simulation
@@ -153,7 +155,7 @@ class Object():
         # self.field = None
         self._build_field(**kwargs)
         
-        simulation.add_object(self)
+        simulation.add_object(self, register=register)
         
     def _build_grid(self):
         # grid stays double precision 
@@ -378,11 +380,14 @@ class Waveform(Object):
             print(f"Propagation must stay within box length {self.simulation.Lz}")
             dz = np.round(self.simulation.Lz - self.z, 10)
             print(f"Propagating for {dz}.")
-        propagation_func = propagator.propagator
 
-        self.field = propagation_func(self, dz)
+        self.field = self._propagate_field(dz, propagator)
+        propagator.update_wave(self)
         self.z += dz
-        
+
+    def _propagate_field(self, dz, propagator: Propagator):
+        return propagator.propagator(self.field, self.wavelength, self.simulation, dz)
+
     def intensity(self):
         I = np.abs(self.field)**2
         return I
@@ -448,8 +453,8 @@ class ThinLens(Aperture):
         try: 
             if not isinstance(source.energy, np.ndarray): n = n_func(source.energy)
             else: n =  np.array([n_func(E) for E in np.ravel(source.energy)]) # energy is stored as (N_lambda, 1, ...)
-        except Exception as e:
-            raise Exception("Undefined or invalid lens material and/or density!") from e
+        except:
+            raise Exception("Undefined or invalid lens material and/or density!")
 
         self.n = n
         self._transmittance_initialized = False # any cached transmittance used the old n
@@ -478,47 +483,51 @@ class ThinLens(Aperture):
         self.mutated = True
         
     ## transmittance features
-    def transmittance(self, wavelength: float | np.ndarray):
+    def transmittance(self, wavelength: float, n=None):
+        '''
+        Transmittance at one wavelength. `n` defaults to the lens index self.n.
+        '''
         k = 2*const.pi/wavelength
-        n = self.n
-        
+        if n is None: n = self.n
+
         # phase evaluated in float64, cast to storage precision after exp
         thickness = np.asarray(self.profile, dtype=np.float64)
-        if isinstance(wavelength, np.ndarray):
-            assert isinstance(n, np.ndarray) and isinstance(k, np.ndarray) 
-            # polychromatic (N_lambda, 1)
-            k = k.reshape((-1,)+(1,)*thickness.ndim)
-            n = n.reshape((-1,)+(1,)*thickness.ndim) 
-            
-            t = np.exp(1j*k*(n-1.)*thickness)
-        else:
-            t = np.exp(1j*k*(n-1.)*thickness)
+        t = np.exp(1j*k*(n-1.)*thickness)
 
         return t.astype(self.simulation.complex_dtype)
 
+    def _is_polychromatic(self):
+        return self._transmittance_initialized and np.ndim(self._transmittance_wavelength) > 0
+
     ## implements lens phase screen
-    def init_transmittance(self, wave: Waveform):
+    def _init_transmittance(self, wave: Waveform):
+        '''
+        Lazy f
+        '''
         assert(not self._transmittance_initialized)
-        transmittance = self.transmittance
-        base = self.aperture_field.astype(self.simulation.complex_dtype)
-        t_l = transmittance(wave.wavelength)
-        
-        if base.ndim < t_l.ndim: base = base[None]
-        
-        self.field = base * t_l
+        if np.ndim(wave.wavelength) > 0:
+            if np.size(self.n) != np.size(wave.wavelength):
+                raise ValueError("Polychromatic waves need one refractive index per energy: call init_refractive_index first.")
+            self.field = self.aperture_field
+        else:
+            assert isinstance(wave.wavelength, float)
+            base = self.aperture_field.astype(self.simulation.complex_dtype)
+            self.field = base * self.transmittance(wave.wavelength)
         self._transmittance_wavelength = wave.wavelength
         self._transmittance_initialized = True
 
     def transform(self, wave: Waveform):
         if not self._transmittance_initialized:
-            print("Warning: Transmittance was not initialized...")
-            self.init_transmittance(wave)
-            self._transmittance_initialized = True
+            self._init_transmittance(wave)
         elif not np.array_equal(self._transmittance_wavelength, wave.wavelength):
             raise Exception("Lens transmittance was initialized for a different wavelength/spectrum than this wave.")
 
-        wave.field = wave.field.astype(self.simulation.complex_dtype, copy=False)*self.field
-    
+        if self._is_polychromatic():
+            for i, (wavelength, n) in enumerate(zip(np.ravel(wave.wavelength), np.ravel(self.n))):
+                wave.field[i] *= self.aperture_field * self.transmittance(wavelength, n)
+        else:
+            wave.field = wave.field.astype(self.simulation.complex_dtype, copy=False)*self.field
+
     ## error functions
     def add_error(self, error_func, **kwargs):
         profile, err = error_func(self, **kwargs)
@@ -536,8 +545,8 @@ class ThinLens(Aperture):
         return np.angle(field)
 
     def view(self, ax=None, *args, **kwargs):
-        # polychromatic transmittance is (N_lambda, ...): no single phase to plot
-        if self.field.ndim > self.dim:
+        # polychromatic transmittance differs per energy: no single phase to plot
+        if self._is_polychromatic():
             print("Skipping lens view: transmittance is polychromatic.")
             return ax
         return super().view(ax, *args, **kwargs)
